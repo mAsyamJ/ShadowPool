@@ -40,6 +40,8 @@ contract SessionFinalizer is ISessionFinalizer, Ownable {
         trustedBackend = backendSigner;
     }
 
+    /// @notice Set the trusted backend.
+    /// @param backendSigner The address of the trusted backend.
     function setTrustedBackend(address backendSigner) external onlyOwner {
         if (backendSigner == address(0)) revert Errors.InvalidAddress();
         address previous = trustedBackend;
@@ -47,8 +49,11 @@ contract SessionFinalizer is ISessionFinalizer, Ownable {
         emit TrustedBackendUpdated(previous, backendSigner);
     }
 
+    /// @notice Finalize the session.
+    /// @param payload The payload to finalize the session.
     function finalizeSession(bytes calldata payload) external override {
         SessionPayload memory decoded = abi.decode(payload, (SessionPayload));
+        // if the participants are empty, the balances are not equal to the participants, or the signatures are not equal to the participants, revert
         if (
             decoded.participants.length == 0 ||
             decoded.participants.length != decoded.balances.length ||
@@ -56,10 +61,12 @@ contract SessionFinalizer is ISessionFinalizer, Ownable {
         ) {
             revert InvalidPayload();
         }
-
+        // create the session key
         bytes32 sessionKey = keccak256(abi.encode(decoded.marketId, decoded.sessionId));
+        // if the session is already finalized, revert
         if (finalizedSessions[sessionKey]) revert AlreadyFinalized();
-
+        // create the state hash
+        // verify the backend signature
         bytes32 stateHash = keccak256(
             abi.encode(decoded.marketId, decoded.sessionId, decoded.participants, decoded.balances)
         ).toEthSignedMessageHash();

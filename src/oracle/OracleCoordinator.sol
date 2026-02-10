@@ -4,7 +4,7 @@ pragma solidity 0.8.24;
 import {ISettlementRouter} from "../interfaces/ISettlementRouter.sol";
 import {Errors} from "../utils/Errors.sol";
 
-/// @title OracleCoordinator
+/// @title OracleCoordinator is the coordinator for the oracle pipeline that routes validated oracle results to the settlement router.
 /// @notice Dispatches validated oracle results to the settlement router.
 contract OracleCoordinator {
     address public creReceiver;
@@ -24,28 +24,40 @@ contract OracleCoordinator {
         if (msg.sender != creReceiver) revert Errors.Unauthorized();
     }
 
+    /// @notice Set the CRE receiver.
+    /// @param receiver The address of the CRE receiver.
     function setCreReceiver(address receiver) external {
         address previous = creReceiver;
         creReceiver = receiver;
         emit CREReceiverUpdated(previous, receiver);
     }
 
+    /// @notice Set the settlement router.
+    /// @param router The address of the settlement router.
     function setSettlementRouter(address router) external {
         address previous = settlementRouter;
         settlementRouter = router;
         emit SettlementRouterUpdated(previous, router);
     }
 
+    /// @notice Set the report validator.
+    /// @param validator The address of the report validator.
     function setReportValidator(address validator) external {
         address previous = reportValidator;
         reportValidator = validator;
         emit ReportValidatorUpdated(previous, validator);
     }
 
+    /// @notice Submit the result to the settlement router to be settled in the prediction market.
+    /// @param market The address of the market.
+    /// @param marketId The ID of the market.
+    /// @param outcomeIndex The index of the outcome.
+    /// @param confidence The confidence of the result.
     function submitResult(address market, uint256 marketId, uint8 outcomeIndex, uint16 confidence)
         external
         onlyReceiver
     {
+        // if the report validator is set, validate the confidence by calling the validate function
         if (reportValidator != address(0)) {
             (bool ok, ) = reportValidator.call(abi.encodeWithSignature("validate(uint16)", confidence));
             if (!ok) revert Errors.InvalidConfidence();
