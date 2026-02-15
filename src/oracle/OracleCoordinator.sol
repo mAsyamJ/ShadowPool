@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ISettlementRouter} from "../interfaces/ISettlementRouter.sol";
 import {Errors} from "../utils/Errors.sol";
 
 /// @title OracleCoordinator is the coordinator for the oracle pipeline that routes validated oracle results to the settlement router.
 /// @notice Dispatches validated oracle results to the settlement router.
-contract OracleCoordinator {
+contract OracleCoordinator is Ownable {
     address public creReceiver;
     address public settlementRouter;
     address public reportValidator;
@@ -24,9 +25,11 @@ contract OracleCoordinator {
         if (msg.sender != creReceiver) revert Errors.Unauthorized();
     }
 
+    constructor() Ownable(msg.sender) {}
+
     /// @notice Set the CRE receiver.
     /// @param receiver The address of the CRE receiver.
-    function setCreReceiver(address receiver) external {
+    function setCreReceiver(address receiver) external onlyOwner {
         address previous = creReceiver;
         creReceiver = receiver;
         emit CREReceiverUpdated(previous, receiver);
@@ -34,7 +37,7 @@ contract OracleCoordinator {
 
     /// @notice Set the settlement router.
     /// @param router The address of the settlement router.
-    function setSettlementRouter(address router) external {
+    function setSettlementRouter(address router) external onlyOwner {
         address previous = settlementRouter;
         settlementRouter = router;
         emit SettlementRouterUpdated(previous, router);
@@ -42,7 +45,7 @@ contract OracleCoordinator {
 
     /// @notice Set the report validator.
     /// @param validator The address of the report validator.
-    function setReportValidator(address validator) external {
+    function setReportValidator(address validator) external onlyOwner {
         address previous = reportValidator;
         reportValidator = validator;
         emit ReportValidatorUpdated(previous, validator);

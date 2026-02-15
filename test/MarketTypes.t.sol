@@ -32,25 +32,6 @@ contract MarketTypesTest is Test {
         outcomes[1] = "B";
         outcomes[2] = "C";
 
-        // #region agent log
-        vm.writeLine(
-            "/home/asyam321/Project/RetroPick/RetroPick/.cursor/debug.log",
-            string(
-                abi.encodePacked(
-                    '{"sessionId":"debug-session","runId":"post-fix","hypothesisId":"A","location":"MarketTypes.t.sol:testCategoricalMarketCreation:setup","message":"initial addresses","data":{"market":"',
-                    vm.toString(address(market)),
-                    '","user":"',
-                    vm.toString(user),
-                    '","testCaller":"',
-                    vm.toString(address(this)),
-                    '"},"timestamp":',
-                    vm.toString(block.timestamp),
-                    "}"
-                )
-            )
-        );
-        // #endregion
-
         MarketFactory.MarketInputV2 memory input = MarketFactory.MarketInputV2({
             question: "Which team wins?",
             requestedBy: creator,
@@ -77,37 +58,6 @@ contract MarketTypesTest is Test {
         token.mint(user, 1 ether);
         vm.startPrank(user);
         token.approve(address(market), 0.1 ether);
-        // #region agent log
-        vm.writeLine(
-            "/home/asyam321/Project/RetroPick/RetroPick/.cursor/debug.log",
-            string(
-                abi.encodePacked(
-                    '{"sessionId":"debug-session","runId":"post-fix","hypothesisId":"B","location":"MarketTypes.t.sol:testCategoricalMarketCreation:afterApprove","message":"allowances after approve","data":{"allowUserToMarket":"',
-                    vm.toString(token.allowance(user, address(market))),
-                    '","allowTestToMarket":"',
-                    vm.toString(token.allowance(address(this), address(market))),
-                    '"},"timestamp":',
-                    vm.toString(block.timestamp),
-                    "}"
-                )
-            )
-        );
-        // #endregion
-
-        // #region agent log
-        vm.writeLine(
-            "/home/asyam321/Project/RetroPick/RetroPick/.cursor/debug.log",
-            string(
-                abi.encodePacked(
-                    '{"sessionId":"debug-session","runId":"post-fix","hypothesisId":"A","location":"MarketTypes.t.sol:testCategoricalMarketCreation:beforePredict","message":"caller before predictOutcome","data":{"msgSender":"',
-                    vm.toString(msg.sender),
-                    '"},"timestamp":',
-                    vm.toString(block.timestamp),
-                    "}"
-                )
-            )
-        );
-        // #endregion
         market.predictOutcome(0, 1, 0.1 ether);
         vm.stopPrank();
         uint256[] memory pools = market.getCategoricalPools(0);

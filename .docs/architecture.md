@@ -6,13 +6,16 @@ ShadowPool is an on-chain prediction market system built for the Chainlink CRE (
 
 At a high level:
 
-- **PredictionMarket** holds the markets, user positions, and pools, and pays out winners.
-- **MarketFactory** creates markets from CRE reports and tracks metadata.
-- **OracleCoordinator + CREReceiver + SettlementRouter** together form the oracle pipeline that routes AI outcomes and session snapshots to the right on-chain consumer.
-- **SessionFinalizer** implements the Yellow session finalization mechanism.
-- **Treasury** is an additive module that can escrow tokens on behalf of markets instead of having markets hold tokens directly.
+- **MarketRegistry** holds market metadata, resolution, and redeem-from-ledger for the ShadowPool path.
+- **CollateralVault** is the single custody point; users deposit once, checkpoints apply cash deltas.
+- **ChannelSettlement** replaces SessionFinalizer for checkpoint-based settlement with nonce monotonicity and challenge window.
+- **ExecutionLedger** stores canonical positions; onchain never recomputes LS-LMSR pricing.
+- **LegacyPoolMarket** (optional demo) keeps pool-based predict/claim.
+- **PredictionMarket** and **SessionFinalizer** remain for legacy flows when `channelSettlement` is not configured.
+- **MarketFactory** creates markets from CRE reports; can target MarketRegistry or LegacyPoolMarket.
+- **Treasury** is an additive escrow module.
 
-The design favors explicit data flows, separation of concerns between market logic and oracle plumbing, and composability through small, focused contracts.
+The design aligns with RetroPick: pricing offchain in Yellow sessions, single custody (CollateralVault), checkpoint semantics (ChannelSettlement), and canonical positions (ExecutionLedger).
 
 ### High-Level Architecture
 
@@ -28,6 +31,19 @@ flowchart LR
     mf[MarketFactory]
     sf[SessionFinalizer]
     tr[Treasury]
+    bs[BatchSettlement]
+  end
+
+  subgraph channels[Yellow State Channels]
+    ysdk[Yellow SDK / Nitrolite Client]
+    yhub[Channel Operator / Hub]
+    yep[Nitrolite ERC-7824 Endpoint]
+  end
+
+  subgraph cre[CRE Workflows]
+    wt[Log Watchers]
+    be[Batch Engine]
+    tx[Tx Submitter]
   end
 
   subgraph oracle[Oracle Pipeline]
@@ -38,23 +54,38 @@ flowchart LR
     rv[ReportValidator]
   end
 
-  user -->|approve / transferFrom| token
-  user -->|create / predict / claim| pm
+  %% User collateral + optional onchain actions
+  user -->|"approve / deposit"| token
+  user -->|create market| mf
+  mf -->|"create*For"| pm
 
+  %% Fast trading via state channels
+  user -->|"open / update channel"| ysdk
+  ysdk -->|"state updates (offchain)"| yhub
+  yhub -->|"finalize/close channel"| yep
+
+  %% CRE watches channel finalization and batches
+  yep -->|ChannelFinalized event| wt
+  wt --> be
+  be --> tx
+  tx -->|settleBatch| bs
+  bs -->|finalizeFromBatch| sf
+  sf -->|"apply deltas / positions"| pm
+
+  %% Oracle flow remains for outcome resolution
   rt -. base .- pm
   rt -. base .- mf
   rt -. base .- cr
 
-  mf -->|create*For| pm
-
   cr --> oc
+  rv --> oc
   oc -->|submitResult| sr
   oc -->|submitSession| sr
-  rv --> oc
 
   sr -->|"onReport (0x01)"| pm
   sr -->|finalizeSession| sf
 
+  %% Payouts
   pm -->|optional escrow| tr
   sf -->|payouts| token
   pm -->|payouts| token
@@ -67,7 +98,36 @@ Key ideas:
 - **Typed markets** (binary/categorical/timeline) share pool and settlement logic inside `PredictionMarket`, with “typed” storage for non-binary markets.
 - **Yellow sessions** are modeled as a separate flow in which an off-chain backend aggregates session state, signs it, and then the on-chain `SessionFinalizer` validates and pays out.
 
+### Execution Layer (RetroPick-Aligned ShadowPool Path)
+
+When `SettlementRouter.channelSettlement` is configured, report prefix `0x03` routes to `ChannelSettlement.submitCheckpointFromPayload` instead of `SessionFinalizer`.
+
+| Contract | Role |
+|----------|------|
+| **CollateralVault** (`src/execution/CollateralVault.sol`) | Single custody: deposit/withdraw, lock/unlock per (user, marketId, sessionId), `applyCashDeltas` (only ChannelSettlement), `redeemPayout` (only MarketRegistry). |
+| **ChannelSettlement** (`src/execution/ChannelSettlement.sol`) | Checkpoint lifecycle: `submitCheckpoint`, `challengeCheckpoint` (before deadline), `finalizeCheckpoint` (after deadline). Nonce monotonicity per (marketId, sessionId). EIP-712 signing. |
+| **ExecutionLedger** (`src/execution/ExecutionLedger.sol`) | Canonical `positionOf(user, marketId, outcomeIndex)`; `applyDeltas` only from ChannelSettlement. |
+
+**Checkpoint schema** (`ShadowTypes.Checkpoint`): marketId, sessionId, nonce, validAfter/validBefore, stateHash, deltasHash, riskHash.
+
+**Delta schema** (`ShadowTypes.Delta`): user, outcomeIndex, sharesDelta, cashDelta.
+
+**Flow**: User deposits to CollateralVault → trades offchain in Yellow (LS-LMSR) → operator + users sign checkpoint → `submitCheckpoint` → challenge window → `finalizeCheckpoint` applies deltas to ExecutionLedger and CollateralVault → oracle resolves → `MarketRegistry.redeem(marketId)` reads ledger, pays from vault.
+
 ### Core Contracts & Responsibilities
+
+#### MarketRegistry (`src/core/MarketRegistry.sol`)
+
+**Role**: Registry, resolution, and redeem-from-ledger for ShadowPool markets. Implements `IPredictionMarket` creation interface for MarketFactory.
+
+- Market storage: type, outcomes, expiry, status (Draft/Active/Resolved/Closed).
+- `resolve(marketId, winningOutcome, confidence)` – called by oracle path.
+- `redeem(marketId)` – reads `ExecutionLedger.positionOf`, pays from CollateralVault.
+- `onReport(metadata, report)` – CRE entrypoint when `report[0] == 0x01`; decodes and resolves. Callable only by `settlementRouter`.
+
+#### LegacyPoolMarket (`src/core/LegacyPoolMarket.sol`)
+
+**Role**: Optional demo path with pool-based predict/claim. Same interface as PredictionMarket for creation.
 
 #### PredictionMarket (`src/core/PredictionMarket.sol`)
 

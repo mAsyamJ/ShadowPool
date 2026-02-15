@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {Ownable2Step} from "@openzeppelin/contracts/access/Ownable2Step.sol";
 import {ISettlementRouter} from "../interfaces/ISettlementRouter.sol";
 import {ISessionFinalizer} from "../interfaces/ISessionFinalizer.sol";
+import {IChannelSettlement} from "../interfaces/IChannelSettlement.sol";
 import {Errors} from "../utils/Errors.sol";
 
 interface IPredictionMarketReceiver {
@@ -11,12 +14,16 @@ interface IPredictionMarketReceiver {
 
 /// @title SettlementRouter is the router for the oracle pipeline that forwards validated oracle results to the prediction market.
 /// @notice Forwards validated outcomes to PredictionMarket via onReport.
-contract SettlementRouter is ISettlementRouter {
+contract SettlementRouter is ISettlementRouter, Ownable2Step {
+    constructor() Ownable(msg.sender) {}
+
     address public oracleCoordinator;
     address public sessionFinalizer;
+    address public channelSettlement;
 
     event OracleCoordinatorUpdated(address indexed previous, address indexed current);
     event SessionFinalizerUpdated(address indexed previous, address indexed current);
+    event ChannelSettlementUpdated(address indexed previous, address indexed current);
     event MarketSettled(address indexed market, uint256 marketId, uint8 outcomeIndex, uint16 confidence);
 
     modifier onlyOracleCoordinator() {
@@ -39,7 +46,7 @@ contract SettlementRouter is ISettlementRouter {
 
     /// @notice Set the oracle coordinator.
     /// @param coordinator The address of the oracle coordinator.
-    function setOracleCoordinator(address coordinator) external {
+    function setOracleCoordinator(address coordinator) external onlyOwner {
         address previous = oracleCoordinator;
         oracleCoordinator = coordinator;
         emit OracleCoordinatorUpdated(previous, coordinator);
@@ -47,7 +54,7 @@ contract SettlementRouter is ISettlementRouter {
 
     /// @notice Set the session finalizer.
     /// @param finalizer The address of the session finalizer.
-    function setSessionFinalizer(address finalizer) external {
+    function setSessionFinalizer(address finalizer) external onlyOwner {
         address previous = sessionFinalizer;
         sessionFinalizer = finalizer;
         emit SessionFinalizerUpdated(previous, finalizer);
@@ -71,14 +78,23 @@ contract SettlementRouter is ISettlementRouter {
         emit MarketSettled(market, marketId, outcomeIndex, confidence);
     }
 
-    /// @notice Finalize the session by forwarding the payload to the session finalizer for yellow sessions.
-    /// @param payload The payload to finalize the session.
+    /// @notice Set the channel settlement contract (checkpoint-based Yellow sessions).
+    function setChannelSettlement(address cs) external onlyOwner {
+        address previous = channelSettlement;
+        channelSettlement = cs;
+        emit ChannelSettlementUpdated(previous, cs);
+    }
+
+    /// @notice Finalize the session: checkpoint path (ChannelSettlement) or legacy (SessionFinalizer).
+    /// @param payload For checkpoint path: abi.encode(cp, deltas, operatorSig, users, userSigs).
     function finalizeSession(bytes calldata payload) external override onlyOracleCoordinator {
-        // if the session finalizer is not set, revert
-        if (sessionFinalizer == address(0)) revert Errors.InvalidAddress();
-        // forward the payload to the session finalizer
-        ISessionFinalizer(sessionFinalizer).finalizeSession(payload);
-        // emit the market settled event
+        if (channelSettlement != address(0)) {
+            IChannelSettlement(channelSettlement).submitCheckpointFromPayload(payload);
+        } else if (sessionFinalizer != address(0)) {
+            ISessionFinalizer(sessionFinalizer).finalizeSession(payload);
+        } else {
+            revert Errors.InvalidAddress();
+        }
         emit MarketSettled(address(0), 0, 0, 0);
     }
 }
