@@ -18,6 +18,8 @@ import {ILiquidityVault4626} from "../interfaces/ILiquidityVault4626.sol";
 /// @title ChannelSettlement
 /// @notice Checkpoint-based Yellow session settlement with nonce monotonicity and challenge window.
 contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
+    error InvalidLiquidityVaultAsset();
+
     ICollateralVault public immutable vault;
     IMultiAssetVault public multiAssetVault;
     IExecutionLedger public immutable ledger;
@@ -261,6 +263,10 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         address lpVault = address(marketRegistry) != address(0)
             ? marketRegistry.liquidityVaultByMarketId(marketId)
             : address(0);
+        if (lpVault != address(0)) {
+            address vaultAsset = ILiquidityVault4626(lpVault).asset();
+            if (vaultAsset != settlementAsset) revert InvalidLiquidityVaultAsset();
+        }
 
         // Net counterparty transfer: LP vault <-> TradingCashLedger
         if (lpVault != address(0)) {
@@ -292,6 +298,12 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
                 multiAssetVault.transferAsset(lpVault, settlementAsset, lpFee);
             } else if (address(feePool) != address(0) && feePool.treasuryPool() != address(0)) {
                 multiAssetVault.transferAsset(feePool.treasuryPool(), settlementAsset, lpFee);
+            }
+        } else if (lpFee > 0) {
+            if (lpVault != address(0) && ILiquidityVault4626(lpVault).totalSupply() > 0) {
+                vault.transferToFeeCollector(lpVault, lpFee);
+            } else if (address(feePool) != address(0) && feePool.treasuryPool() != address(0)) {
+                vault.transferToFeeCollector(feePool.treasuryPool(), lpFee);
             }
         }
         if (creatorFee > 0 && address(marketRegistry) != address(0)) {

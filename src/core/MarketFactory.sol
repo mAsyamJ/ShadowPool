@@ -6,6 +6,7 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {MarketDraftBoard} from "../curation/MarketDraftBoard.sol";
 import {DraftClaimManager} from "../curation/DraftClaimManager.sol";
+import {ILiquidityVault4626} from "../interfaces/ILiquidityVault4626.sol";
 
 /// @notice Interface for the prediction market.
 interface IPredictionMarket {
@@ -93,6 +94,9 @@ contract MarketFactory is ReceiverTemplate {
     error InvalidTimelineWindows();
     error UnauthorizedPublishReceiver();
     error CuratedPathNotConfigured();
+    error DraftTimeMismatch();
+    error SeededClaimRequired();
+    error InvalidLiquidityVaultAsset();
 
     /// @notice Events for market operations.
     event MarketSpawned(
@@ -254,10 +258,30 @@ contract MarketFactory is ReceiverTemplate {
         if (address(draftBoard) == address(0)) revert CuratedPathNotConfigured();
 
         MarketDraftBoard.Draft memory d = draftBoard.getDraft(draftId);
+        // Curated draft times are source of truth; payload may repeat values but cannot override.
+        if (params.tradingOpen != 0 && params.tradingOpen != d.tradingOpen) revert DraftTimeMismatch();
+        if (params.tradingClose != 0 && params.tradingClose != d.tradingClose) revert DraftTimeMismatch();
+        if (params.resolveTime != 0 && params.resolveTime != d.resolveTime) revert DraftTimeMismatch();
+        uint48 tradingOpen = d.tradingOpen;
+        uint48 tradingClose = d.tradingClose;
+        uint48 resolveTime = d.resolveTime;
+
+        address liquidityVault = address(draftClaimManager) != address(0)
+            ? draftClaimManager.getLiquidityVault(draftId)
+            : address(0);
+
+        // For seeded curated markets, a seeded claim is mandatory before publish.
+        if (d.minSeed > 0 && liquidityVault == address(0)) revert SeededClaimRequired();
+
         address settlementAsset = d.settlementAsset;
-        uint48 tradingOpen = params.tradingOpen != 0 ? params.tradingOpen : d.tradingOpen;
-        uint48 tradingClose = params.tradingClose != 0 ? params.tradingClose : d.tradingClose;
-        uint48 resolveTime = params.resolveTime != 0 ? params.resolveTime : d.resolveTime;
+        if (liquidityVault != address(0)) {
+            address vaultAsset = ILiquidityVault4626(liquidityVault).asset();
+            if (settlementAsset == address(0)) {
+                settlementAsset = vaultAsset;
+            } else if (vaultAsset != settlementAsset) {
+                revert InvalidLiquidityVaultAsset();
+            }
+        }
 
         if (params.marketType == MARKET_TYPE_BINARY) {
             marketId = marketRegistry.createMarketForWithFullParams(
@@ -297,9 +321,6 @@ contract MarketFactory is ReceiverTemplate {
             revert InvalidMarketType();
         }
 
-        address liquidityVault = address(draftClaimManager) != address(0)
-            ? draftClaimManager.getLiquidityVault(draftId)
-            : address(0);
         if (liquidityVault != address(0)) {
             marketRegistry.setLiquidityVault(marketId, liquidityVault);
         }

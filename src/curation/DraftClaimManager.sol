@@ -107,7 +107,9 @@ contract DraftClaimManager is EIP712, Ownable {
 
         IERC20(asset).safeTransferFrom(msg.sender, address(this), seedAmount);
         IERC20(asset).forceApprove(vault, seedAmount);
-        uint256 shares = LiquidityVault4626(vault).deposit(seedAmount, msg.sender);
+        // Mint shares to this contract so seed shares are actually locked onchain
+        // until unlockSeedShares is called.
+        uint256 shares = LiquidityVault4626(vault).deposit(seedAmount, address(this));
 
         seedSharesLocked[draftId] = shares;
         seedUnlockTime[draftId] = d.tradingClose != 0 ? d.tradingClose : uint48(block.timestamp);
@@ -135,6 +137,8 @@ contract DraftClaimManager is EIP712, Ownable {
         address claimer = claims[draftId].claimer;
         uint256 shares = seedSharesLocked[draftId];
         seedSharesLocked[draftId] = 0;
+        address vault = claims[draftId].liquidityVault;
+        IERC20(vault).safeTransfer(claimer, shares);
         emit SeedSharesUnlocked(draftId, claimer, shares);
     }
 

@@ -99,6 +99,8 @@ contract MarketPolicy is Ownable {
         if (mt > MARKET_TYPE_TIMELINE) revert InvalidMarketType();
         if ((allowedMarketTypes & (1 << mt)) == 0) revert InvalidMarketType();
 
+        if (minCreatorSeed != 0 && draft.minSeed < minCreatorSeed) revert SeedTooLow();
+
         if (resolveSpecAllowlistEnabled && draft.resolveSpecHash != bytes32(0)) {
             if (!allowedResolveSpecHashes[draft.resolveSpecHash]) revert ResolveSpecNotAllowed();
         }

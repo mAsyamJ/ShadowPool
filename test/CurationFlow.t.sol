@@ -12,6 +12,7 @@ import {MarketRegistry} from "../src/core/MarketRegistry.sol";
 import {CollateralVault} from "../src/execution/CollateralVault.sol";
 import {ExecutionLedger} from "../src/execution/ExecutionLedger.sol";
 import {LiquidityVaultFactory} from "../src/curation/LiquidityVaultFactory.sol";
+import {LiquidityVault4626} from "../src/execution/LiquidityVault4626.sol";
 
 contract CurationFlowTest is Test {
     address forwarder = address(0x1234);
@@ -90,6 +91,150 @@ contract CurationFlowTest is Test {
         assertEq(uint8(draftBoard.getStatus(draftId)), uint8(MarketDraftBoard.DraftStatus.Published));
         assertEq(marketRegistry.getCreator(0), creator);
         assertTrue(marketRegistry.liquidityVaultByMarketId(0) != address(0));
+    }
+
+    function testPublishRequiresSeedWhenMinSeedPositive() public {
+        LiquidityVaultFactory vaultFactory = new LiquidityVaultFactory(address(0));
+        vm.prank(draftClaimManager.owner());
+        draftClaimManager.setLiquidityVaultFactory(address(vaultFactory));
+        marketFactory.setDraftClaimManager(address(draftClaimManager));
+
+        bytes32 draftId = _proposeDraftWithSeed(address(token), 50 ether);
+        _claimDraft(draftId); // legacy claim path, no seed
+
+        IMarketFactoryFromDraft.DraftPublishParams memory params = IMarketFactoryFromDraft.DraftPublishParams({
+            question: "Will X happen?",
+            marketType: 0,
+            outcomes: _strs("Yes", "No"),
+            timelineWindows: new uint48[](0),
+            resolveTime: uint48(block.timestamp + 86400),
+            tradingOpen: 0,
+            tradingClose: uint48(block.timestamp + 86400)
+        });
+        bytes32 paramsHash = keccak256(
+            abi.encode(
+                params.question,
+                params.marketType,
+                keccak256(abi.encode(params.outcomes)),
+                keccak256(abi.encode(params.timelineWindows)),
+                params.resolveTime,
+                params.tradingOpen,
+                params.tradingClose
+            )
+        );
+        bytes32 publishDigest = crePublishReceiver.digestPublishFromDraft(draftId, paramsHash, creator);
+        (uint8 pv, bytes32 pr, bytes32 ps) = vm.sign(creatorPk, publishDigest);
+        bytes memory report = abi.encode(draftId, creator, params, abi.encodePacked(pr, ps, pv));
+        vm.prank(forwarder);
+        vm.expectRevert(MarketFactory.SeededClaimRequired.selector);
+        crePublishReceiver.onReport("", report);
+    }
+
+    function testPublishRejectsDraftTimeMismatch() public {
+        bytes32 draftId = _proposeDraft();
+        _claimDraft(draftId);
+
+        IMarketFactoryFromDraft.DraftPublishParams memory params = IMarketFactoryFromDraft.DraftPublishParams({
+            question: "Will X happen?",
+            marketType: 0,
+            outcomes: _strs("Yes", "No"),
+            timelineWindows: new uint48[](0),
+            resolveTime: uint48(block.timestamp + 86400),
+            tradingOpen: 0,
+            tradingClose: uint48(block.timestamp + 90000) // mismatch from draft
+        });
+        bytes32 paramsHash = keccak256(
+            abi.encode(
+                params.question,
+                params.marketType,
+                keccak256(abi.encode(params.outcomes)),
+                keccak256(abi.encode(params.timelineWindows)),
+                params.resolveTime,
+                params.tradingOpen,
+                params.tradingClose
+            )
+        );
+        bytes32 publishDigest = crePublishReceiver.digestPublishFromDraft(draftId, paramsHash, creator);
+        (uint8 pv, bytes32 pr, bytes32 ps) = vm.sign(creatorPk, publishDigest);
+        bytes memory report = abi.encode(draftId, creator, params, abi.encodePacked(pr, ps, pv));
+        vm.prank(forwarder);
+        vm.expectRevert(MarketFactory.DraftTimeMismatch.selector);
+        crePublishReceiver.onReport("", report);
+    }
+
+    function testClaimAndSeedLocksSharesInManager() public {
+        LiquidityVaultFactory vaultFactory = new LiquidityVaultFactory(address(0));
+        vm.prank(draftClaimManager.owner());
+        draftClaimManager.setLiquidityVaultFactory(address(vaultFactory));
+        marketFactory.setDraftClaimManager(address(draftClaimManager));
+
+        token.mint(creator, 100 ether);
+        vm.prank(creator);
+        token.approve(address(draftClaimManager), 100 ether);
+
+        bytes32 draftId = _proposeDraftWithSeed(address(token), 50 ether);
+        _claimAndSeed(draftId);
+
+        address lv = draftClaimManager.getLiquidityVault(draftId);
+        assertTrue(lv != address(0));
+        assertEq(LiquidityVault4626(lv).balanceOf(creator), 0, "creator should not directly hold locked shares");
+        assertGt(LiquidityVault4626(lv).balanceOf(address(draftClaimManager)), 0, "manager must custody locked shares");
+    }
+
+    function testVaultFactoryWrongAssetCanBeReplaced() public {
+        LiquidityVaultFactory vaultFactory = new LiquidityVaultFactory(address(0));
+        vm.prank(draftClaimManager.owner());
+        draftClaimManager.setLiquidityVaultFactory(address(vaultFactory));
+        marketFactory.setDraftClaimManager(address(draftClaimManager));
+
+        ERC20Mock other = new ERC20Mock();
+        bytes32 draftId = _proposeDraftWithSeed(address(token), 50 ether);
+
+        // attacker pre-creates wrong-asset vault for the same draft
+        address wrong = vaultFactory.createVaultForDraft(draftId, address(other));
+        assertEq(LiquidityVault4626(wrong).asset(), address(other));
+
+        token.mint(creator, 100 ether);
+        vm.prank(creator);
+        token.approve(address(draftClaimManager), 100 ether);
+
+        // claimAndSeed should recreate/replace with correct-asset vault and succeed
+        _claimAndSeed(draftId);
+        address lv = draftClaimManager.getLiquidityVault(draftId);
+        assertEq(LiquidityVault4626(lv).asset(), address(token));
+    }
+
+    function testPolicyMinCreatorSeedEnforcedOnPublish() public {
+        marketPolicy.setMinCreatorSeed(100 ether);
+        bytes32 draftId = _proposeDraftWithSeed(address(token), 50 ether); // below policy minimum
+        _claimDraft(draftId);
+
+        IMarketFactoryFromDraft.DraftPublishParams memory params = IMarketFactoryFromDraft.DraftPublishParams({
+            question: "Will X happen?",
+            marketType: 0,
+            outcomes: _strs("Yes", "No"),
+            timelineWindows: new uint48[](0),
+            resolveTime: uint48(block.timestamp + 86400),
+            tradingOpen: 0,
+            tradingClose: uint48(block.timestamp + 86400)
+        });
+        bytes32 paramsHash = keccak256(
+            abi.encode(
+                params.question,
+                params.marketType,
+                keccak256(abi.encode(params.outcomes)),
+                keccak256(abi.encode(params.timelineWindows)),
+                params.resolveTime,
+                params.tradingOpen,
+                params.tradingClose
+            )
+        );
+        bytes32 publishDigest = crePublishReceiver.digestPublishFromDraft(draftId, paramsHash, creator);
+        (uint8 pv, bytes32 pr, bytes32 ps) = vm.sign(creatorPk, publishDigest);
+        bytes memory report = abi.encode(draftId, creator, params, abi.encodePacked(pr, ps, pv));
+        vm.prank(forwarder);
+        vm.expectRevert(MarketPolicy.SeedTooLow.selector);
+        crePublishReceiver.onReport("", report);
     }
 
     function _proposeDraft() internal returns (bytes32 draftId) {

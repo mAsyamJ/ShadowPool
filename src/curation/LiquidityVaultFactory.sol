@@ -27,7 +27,11 @@ contract LiquidityVaultFactory is Ownable {
     /// @notice Create a liquidity vault for a draft. Idempotent per draftId. Callable by any address.
     function createVaultForDraft(bytes32 draftId, address asset) external returns (address vault) {
         vault = vaultByDraftId[draftId];
-        if (vault != address(0)) return vault;
+        if (vault != address(0)) {
+            // If a vault already exists for this draft with a different asset,
+            // replace it to avoid permanent griefing by first-writer with wrong asset.
+            if (LiquidityVault4626(vault).asset() == asset) return vault;
+        }
 
         LiquidityVault4626 v = new LiquidityVault4626(asset, channelSettlement);
         vault = address(v);

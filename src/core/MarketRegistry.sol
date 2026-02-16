@@ -17,6 +17,7 @@ contract MarketRegistry is IMarketRegistry, Ownable {
     error InvalidOutcomeIndex();
     error InvalidOutcomeCount();
     error InvalidTimelineWindows();
+    error InvalidMarketTimes();
     error UnauthorizedFactory();
     error UnauthorizedRouter();
     error NothingToRedeem();
@@ -206,6 +207,7 @@ contract MarketRegistry is IMarketRegistry, Ownable {
         address settlementAsset_
     ) public returns (uint256 marketId) {
         if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        _validateTimes(tradingOpen_, tradingClose_, resolveTime_);
         uint48 expiry_ = resolveTime_ != 0 ? resolveTime_ : tradingClose_;
         marketId = nextMarketId++;
         marketTypeById[marketId] = MarketType.Binary;
@@ -283,6 +285,7 @@ contract MarketRegistry is IMarketRegistry, Ownable {
         address settlementAsset_
     ) public returns (uint256 marketId) {
         if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        _validateTimes(tradingOpen_, tradingClose_, resolveTime_);
         uint48 expiry_ = resolveTime_ != 0 ? resolveTime_ : tradingClose_;
         marketId = nextMarketId++;
         _initTypedMarketWithFullParams(
@@ -356,6 +359,7 @@ contract MarketRegistry is IMarketRegistry, Ownable {
         address settlementAsset_
     ) public returns (uint256 marketId) {
         if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        _validateTimes(tradingOpen_, tradingClose_, resolveTime_);
         uint48 expiry_ = resolveTime_ != 0 ? resolveTime_ : tradingClose_;
         marketId = nextMarketId++;
         _initTypedMarketWithFullParams(
@@ -438,6 +442,11 @@ contract MarketRegistry is IMarketRegistry, Ownable {
             if (windows[i] <= windows[i - 1]) revert InvalidTimelineWindows();
         }
         timelineWindows[marketId] = windows;
+    }
+
+    function _validateTimes(uint48 tradingOpen_, uint48 tradingClose_, uint48 resolveTime_) internal pure {
+        if (tradingOpen_ != 0 && tradingClose_ != 0 && tradingClose_ < tradingOpen_) revert InvalidMarketTimes();
+        if (tradingClose_ != 0 && resolveTime_ != 0 && resolveTime_ < tradingClose_) revert InvalidMarketTimes();
     }
 
     // ============ Resolve ============

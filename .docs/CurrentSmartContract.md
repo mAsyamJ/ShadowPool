@@ -1,279 +1,240 @@
-# Current Smart Contract Architecture (Detailed)
+# RetroPick Current Smart Contract Architecture (Post-ChangesTarget2)
 
 Last updated: 2026-02-16  
-Repository scope: `packages/contracts`  
-Code scope: `src/**` + behavior verification in `test/**`
+Scope: `packages/contracts/src` + `packages/contracts/test`  
+Validation snapshot: `forge test -q` passes on this state.
 
-## 1. Architecture Intent
+## 1) Executive Architecture Summary
 
-The current system supports three concurrent product lanes:
+The current system is now a hybrid of:
 
-1. Legacy pool prediction markets
-- `PredictionMarket`
-- `PoolMarketLegacy`
-- Optional escrow helper: `Treasury`
+1. Oracle ingress and routing pipeline
+- `ReceiverTemplate` -> `CREReceiver` -> `OracleCoordinator` -> `SettlementRouter`
 
-2. Yellow execution settlement lane (state-checkpoint based)
-- `MarketRegistry`
-- `ChannelSettlement`
-- `ExecutionLedger`
-- `CollateralVault` and `MultiAssetVault`
-
-3. Curated market supply lane
+2. Curated market supply pipeline (Draft -> Claim -> Publish)
 - `MarketDraftBoard`
-- `DraftClaimManager`
-- `MarketPolicy`
+- `DraftClaimManager` (legacy `claimDraft` + new `claimAndSeed`)
+- `LiquidityVaultFactory` (per-draft ERC-4626 vault deployer)
 - `CREPublishReceiver`
 - `MarketFactory.createFromDraft`
 
-Oracle ingress/routing is shared across lanes:
-- `ReceiverTemplate` -> `CREReceiver` -> `OracleCoordinator` -> `SettlementRouter`
+3. Execution settlement pipeline (checkpoint-based)
+- `ChannelSettlement`
+- `ExecutionLedger`
+- `MarketRegistry`
+- `CollateralVault` or `MultiAssetVault`
+- `FeeManager` + `FeePool` + `TreasuryPool`
+- optional market liquidity vault per market via `MarketRegistry.liquidityVaultByMarketId`
 
-Fee extraction is implemented on settlement path:
-- `FeeManager`
-- `FeePool`
-- `TreasuryPool`
+4. Legacy pool market lane (still active in code/tests)
+- `PoolMarketLegacy`
+- `SessionFinalizer`
+- `Treasury` (optional escrow helper)
 
-## 2. System Topology
+Major upgrade now present:
+- Settlement logic includes LP-vault counterparty flow and fee splitting (`protocol/lp/creator`) in `ChannelSettlement`.
+- Curated drafts now include `settlementAsset` and `minSeed`, and `claimAndSeed` path mints ERC-4626 shares.
+
+## 2) High-Level Topology
 
 ```mermaid
 flowchart LR
-  subgraph ingress[Ingress and Oracle Routing]
+  subgraph ingress[Oracle Ingress]
     FWD[Chainlink Forwarder]
-    RT[ReceiverTemplate Guards]
     CR[CREReceiver]
     OC[OracleCoordinator]
     RV[ReportValidator]
     SR[SettlementRouter]
   end
 
-  subgraph curated[Curated Supply]
-    MDB[MarketDraftBoard]
+  subgraph curated[Curated Pipeline]
+    DB[MarketDraftBoard]
     DCM[DraftClaimManager]
-    MP[MarketPolicy]
+    LVF[LiquidityVaultFactory]
     CPR[CREPublishReceiver]
     MF[MarketFactory]
   end
 
-  subgraph exec[Yellow Execution Path]
+  subgraph execution[Execution Pipeline]
     MR[MarketRegistry]
     CS[ChannelSettlement]
     EL[ExecutionLedger]
-    CV[CollateralVault]
     MAV[MultiAssetVault]
+    CV[CollateralVault]
     FM[FeeManager]
     FP[FeePool]
     TP[TreasuryPool]
+    LV[LiquidityVault4626]
   end
 
-  subgraph legacy[Legacy Pool Path]
-    PM[PredictionMarket]
-    PL[PoolMarketLegacy]
+  subgraph legacy[Legacy Pool Lane]
+    PM[PoolMarketLegacy]
     SF[SessionFinalizer]
     TR[Treasury]
   end
 
-  FWD --> RT
-  RT --> CR
-  CR --> OC
+  FWD --> CR
   RV --> OC
+  CR --> OC
   OC --> SR
 
-  SR -->|settleMarket 0x01| MR
-  SR -->|settleMarket 0x01| PM
-  SR -->|settleMarket 0x01| PL
-
-  SR -->|finalizeSession payload| CS
+  SR -->|0x01 result| MR
+  SR -->|0x01 result| PM
+  SR -->|session payload| CS
   SR -->|fallback| SF
 
+  DB --> DCM
+  DCM --> LVF
+  CPR --> DCM
+  CPR --> DB
+  CPR --> MF
+  MF --> MR
+  MF --> PM
+
   CS --> EL
-  CS --> CV
   CS --> MAV
+  CS --> CV
   CS --> FM
   CS --> FP
+  CS --> LV
   FP --> TP
 
-  MF --> PM
-  MF --> PL
-  MF --> MR
-
-  MDB --> DCM
-  CPR --> MP
-  CPR --> DCM
-  CPR --> MDB
-  CPR --> MF
-
   MR --> EL
-  MR --> CV
   MR --> MAV
-
-  PM --> TR
-  PL --> TR
+  MR --> CV
 ```
 
-## 3. Deployment Modes
+## 3) Contract Inventory and Roles
 
-### 3.1 Legacy Demo Mode
+## 3.1 Core
 
-- Market creation and trading in `PredictionMarket` or `PoolMarketLegacy`
-- Outcome routing by `SettlementRouter.settleMarket(...)`
-- Session settlement (if used) through `SessionFinalizer`
+- `src/core/MarketRegistry.sol`
+  - canonical market metadata + settlement + redeem in execution lane.
+- `src/core/MarketFactory.sol`
+  - CRE market creation (v1/v2) and curated `createFromDraft`.
+- `src/core/SettlementRouter.sol`
+  - routes validated outcomes and session payloads.
+- `src/core/SessionFinalizer.sol`
+  - legacy snapshot payout finalizer.
+- `src/core/PoolMarketLegacy.sol`
+  - pool-based predict/claim + new add/reduce position behavior.
+- `src/core/Treasury.sol`
+  - optional escrow helper.
 
-### 3.2 Yellow Execution Mode (recommended current architecture)
+## 3.2 Oracle
 
-- Market state and resolution in `MarketRegistry`
-- Offchain trade engine outputs signed checkpoints
-- `ChannelSettlement` enforces checkpoint validity + challenge window
-- `ExecutionLedger` stores canonical outcome shares
-- `CollateralVault` or `MultiAssetVault` applies net cash deltas
-- `MarketRegistry.redeem` pays from vault based on winning shares
+- `src/oracle/CREReceiver.sol`
+- `src/oracle/OracleCoordinator.sol`
+- `src/oracle/ReportValidator.sol`
 
-### 3.3 Curated Mode on top of Yellow
+## 3.3 Curation
 
-- Draft lifecycle controlled in `MarketDraftBoard`
-- Claim attestation through EIP-712 in `DraftClaimManager`
-- CRE publish report verified in `CREPublishReceiver`
-- Policy gate in `MarketPolicy`
-- `MarketFactory.createFromDraft` creates market in `MarketRegistry`
+- `src/curation/MarketDraftBoard.sol`
+- `src/curation/DraftClaimManager.sol`
+- `src/curation/MarketPolicy.sol`
+- `src/curation/CREPublishReceiver.sol`
+- `src/curation/LiquidityVaultFactory.sol`
 
-## 4. Trust Boundaries and Security Gates
+## 3.4 Execution + Liquidity
 
-## 4.1 External trust roots
+- `src/execution/ChannelSettlement.sol`
+- `src/execution/ExecutionLedger.sol`
+- `src/execution/CollateralVault.sol`
+- `src/execution/MultiAssetVault.sol`
+- `src/execution/CollateralVaultAdapter.sol`
+- `src/execution/LiquidityVault4626.sol`
 
-1. Chainlink Forwarder
-- Receiver entrypoints are protected by `ReceiverTemplate` sender checks.
+## 3.5 Fees
 
-2. Oracle route trust
-- `OracleCoordinator` accepts only `creReceiver` sender.
-- `SettlementRouter` accepts only `oracleCoordinator` sender.
+- `src/fees/FeeManager.sol`
+- `src/fees/FeePool.sol`
+- `src/fees/TreasuryPool.sol`
 
-3. Settlement signer trust
-- `ChannelSettlement` trusts `operator` EIP-712 signature plus user signatures.
+## 4) Trust Boundaries and Authority Model
 
-4. Admin trust
-- Owner controls key wiring and configuration across modules.
+## 4.1 Ingress trust
 
-## 4.2 Ingress schemas (current)
+- `ReceiverTemplate` enforces sender forwarder and optional workflow metadata checks.
+- `CREReceiver` only transforms payload routing and delegates trust to coordinator.
 
-- `CREReceiver`:
-  - `0x03` prefixed report => session payload route
-  - else => `(market, marketId, outcomeIndex, confidence)` route
+## 4.2 Routing trust
 
-- `SettlementRouter`:
-  - creates market-settlement report as `0x01 || abi.encode(marketId, outcomeIndex, confidence)`
+- `OracleCoordinator.submitResult/submitSession` only callable by configured `creReceiver`.
+- `SettlementRouter.settleMarket/finalizeSession` only callable by configured `oracleCoordinator`.
 
-- `CREPublishReceiver`:
-  - accepts raw or `0x04`-prefixed draft publish payload
-  - validates draft claim signer using EIP-712
+## 4.3 Settlement trust
 
-## 4.3 Access-control summary
+- `ChannelSettlement` trusts:
+  - `operator` checkpoint signature
+  - user signature list
+  - nonce/challenge window constraints
 
-| Contract | Restricted Operation | Current Guard |
-|---|---|---|
-| `MarketRegistry` | `resolve` | `msg.sender == settlementRouter` |
-| `MarketRegistry` | market creation for others | `msg.sender == marketFactory` |
-| `SettlementRouter` | `settleMarket`, `finalizeSession` | `msg.sender == oracleCoordinator` |
-| `OracleCoordinator` | `submitResult`, `submitSession` | `msg.sender == creReceiver` |
-| `ReportValidator` | `setMinConfidence` | `onlyOwner` |
-| `Treasury` | `setMarketApproved` | `onlyOwner` |
-| `ExecutionLedger` | `applyDeltas` | `msg.sender == channelSettlement` |
-| `CollateralVault` | `applyCashDeltas`, lock/unlock, fee transfer | `msg.sender == channelSettlement` |
-| `MultiAssetVault` | `applyCashDeltas`, lock/unlock, fee transfer | `msg.sender == channelSettlement` |
-| `FeePool` | `recordFeeCollected` | `msg.sender == feeCollector` |
-| `MarketDraftBoard` | `proposeDraft` | `AI_ORACLE_ROLE` |
-| `MarketDraftBoard` | `markPublished` | `PUBLISH_CALLER_ROLE` |
+## 4.4 Admin trust
 
-## 5. Data Model (Current)
+- Owners can rewire coordinator/router/vault/fee endpoints and policy values.
+- Critical owner-gated ops include:
+  - `ReportValidator.setMinConfidence`
+  - `Treasury.setMarketApproved`
+  - registry/router/vault address setters across modules
 
-## 5.1 Market model (`MarketRegistry`)
+## 5) Data Models (Current Implementation)
 
-`MarketRegistry.Market` stores:
-- `creator`
-- `createdAt`
-- `expiry`
-- `tradingOpen`
-- `tradingClose`
-- `resolveTime`
-- `settledAt`
-- `settled`
-- `frozen`
-- `confidence`
-- `outcome` (binary enum)
-- `question`
+## 5.1 `MarketDraftBoard.Draft`
+
+Stores:
+- identity: `questionHash`, `questionURI`, `marketType`, `outcomesHash`, `outcomesURI`
+- policy/time: `resolveSpecHash`, `tradingOpen`, `tradingClose`, `resolveTime`
+- economics: `settlementAsset`, `minSeed`
+- lifecycle: `status`, `creator`, `proposedAt`
+
+Status lifecycle:
+- `Proposed -> Claimed -> Published`
+- or `Cancelled/Expired`
+
+## 5.2 `MarketRegistry.Market`
+
+Stores:
+- creator and question
+- timing: `tradingOpen`, `tradingClose`, `resolveTime`, `expiry`
+- settlement: `settled`, `frozen`, `confidence`, winning outcome
 
 Associated mappings:
-- `marketTypeById`
-- `categoricalOutcomes[marketId]`
-- `timelineWindows[marketId]`
-- `typedOutcomeIndex[marketId]`
+- `settlementAssetByMarketId`
+- `liquidityVaultByMarketId`
+- typed market outcomes/windows and winning index
 - `hasRedeemed[marketId][user]`
-- `settlementAssetByMarketId[marketId]`
 
-Status derivation:
-- no market => `Draft`
+`status(marketId)` derivation:
+- missing creator => `Draft`
 - settled => `Resolved`
 - frozen => `Frozen`
-- otherwise => `Open`
+- else => `Open`
 
-Note:
-- Interface enum includes `Closed`, but current implementation does not transition to `Closed`.
+## 5.3 Checkpoint types
 
-## 5.2 Checkpoint model (`ShadowTypes` + `ChannelSettlement`)
-
-`Checkpoint` fields in use:
-- `marketId`
-- `sessionId`
-- `nonce`
-- `validAfter`
-- `validBefore`
+`ShadowTypes.Checkpoint`:
+- `marketId`, `sessionId`, `nonce`
+- `validAfter`, `validBefore`
 - `lastTradeAt`
-- `stateHash`
-- `deltasHash`
-- `riskHash`
+- `stateHash`, `deltasHash`, `riskHash`
 
-`Delta` fields in use:
-- `user`
-- `outcomeIndex`
-- `sharesDelta`
-- `cashDelta`
+`ShadowTypes.Delta`:
+- `user`, `outcomeIndex`, `sharesDelta`, `cashDelta`
 
-Per-session state in `ChannelSettlement`:
-- `latestNonceByKey`
-- `pendingByKey` with `nonce`, `challengeDeadline`, `lastTradeAt`, hashes
+`ChannelSettlement.Pending`:
+- pending nonce
+- challenge deadline
+- persisted hashes + `lastTradeAt`
 
-## 5.3 Ledger and vault state
+## 5.4 Vault states
 
-- `ExecutionLedger`: `positionOf(user, marketId, outcomeIndex) -> int256`
-- `CollateralVault`:
-  - `_freeBalance[user]`
-  - `_lockedBalance[keccak(user, marketId, sessionId)]`
-- `MultiAssetVault`:
-  - `_freeBalance[asset][user]`
-  - `_lockedBalance[keccak(asset, user, marketId, sessionId)]`
+- `CollateralVault`: free/locked balances by user.
+- `MultiAssetVault`: free/locked balances by `(asset, user)` and per-session lock key.
+- `LiquidityVault4626`: ERC-4626 shares and asset pool (per draft via factory deployment).
 
-## 5.4 Curated draft state
+## 6) End-to-End Flows
 
-`MarketDraftBoard.Draft`:
-- question hash/URI
-- market type
-- outcomes hash/URI
-- resolve spec hash
-- trading open/close
-- resolve time
-- status (`Proposed`, `Claimed`, `Published`, `Cancelled`, `Expired`)
-- creator
-- proposed timestamp
-
-`DraftClaimManager.Claim`:
-- claimer
-- bond
-- seed commitment
-- claimed timestamp
-- expiry
-
-## 6. End-to-End Execution Sequences
-
-## 6.1 Outcome settlement sequence
+## 6.1 Oracle outcome flow
 
 ```mermaid
 sequenceDiagram
@@ -281,373 +242,280 @@ sequenceDiagram
   participant CR as CREReceiver
   participant OC as OracleCoordinator
   participant SR as SettlementRouter
-  participant M as MarketReceiver (MarketRegistry/Pool)
+  participant M as Market Receiver
 
   F->>CR: onReport(metadata, report)
   CR->>OC: submitResult(market, marketId, outcome, confidence)
   OC->>OC: optional validate(confidence)
   OC->>SR: settleMarket(...)
   SR->>M: onReport('', 0x01 || abi.encode(...))
-  M->>M: resolve market
+  M->>M: resolve
 ```
 
-## 6.2 Session checkpoint sequence
+Receivers currently used:
+- `MarketRegistry` (execution lane)
+- `PoolMarketLegacy` (legacy lane)
+
+## 6.2 Curated claim-and-seed + publish flow
 
 ```mermaid
 sequenceDiagram
-  participant F as Forwarder
-  participant CR as CREReceiver
-  participant OC as OracleCoordinator
-  participant SR as SettlementRouter
-  participant CS as ChannelSettlement
-  participant EL as ExecutionLedger
-  participant V as Vault
-  participant FP as FeePool
-
-  F->>CR: onReport(..., 0x03 || payload)
-  CR->>OC: submitSession(payload)
-  OC->>SR: finalizeSession(payload)
-  SR->>CS: submitCheckpointFromPayload(payload)
-
-  Note over CS: pending checkpoint + challenge window
-
-  CS->>CS: finalizeCheckpoint(...)
-  CS->>EL: applyDeltas(...)
-  CS->>V: applyCashDeltas(...)
-  CS->>V: transferToFeeCollector(...)
-  CS->>FP: recordFeeCollected(...)
-```
-
-## 6.3 Curated publish sequence
-
-```mermaid
-sequenceDiagram
-  participant AI as AI/Curator
-  participant DB as MarketDraftBoard
-  participant Maker as Creator
+  participant AI as AI proposer
+  participant DB as DraftBoard
+  participant Maker as Claimer
   participant DCM as DraftClaimManager
-  participant F as Forwarder
+  participant LVF as LiquidityVaultFactory
   participant CPR as CREPublishReceiver
-  participant MP as MarketPolicy
   participant MF as MarketFactory
   participant MR as MarketRegistry
 
-  AI->>DB: proposeDraft(...)
-  Maker->>DCM: claimDraft(draftId,...,sig)
-  DCM->>DB: setClaimed(draftId, maker)
+  AI->>DB: proposeDraft(..., settlementAsset, minSeed)
+  Maker->>DCM: claimAndSeed(draftId, asset, seed, sig)
+  DCM->>LVF: createVaultForDraft(draftId, asset)
+  DCM->>DCM: deposit to LiquidityVault4626, lock metadata, setClaimed
 
-  F->>CPR: onReport(0x04 || publishPayload)
-  CPR->>CPR: verify claimer EIP-712 sig
-  CPR->>MP: validateDraftWithOutcomesCount(...)
-  CPR->>MF: createFromDraft(...)
-  MF->>MR: create*ForWithExpiry(...)
+  CPR->>CPR: verify creator signature + draft claimed
+  CPR->>MF: createFromDraft(draftId, creator, params)
+  MF->>MR: create*ForWithFullParams(..., settlementAsset)
+  MF->>MR: setLiquidityVault(marketId, vaultByDraft)
   MF->>DB: markPublished(draftId, marketId)
 ```
 
-## 6.4 Redemption sequence
+Important current behavior:
+- `createFromDraft` uses draft settlement asset and full timing params.
+- Liquidity vault binding depends on `DraftClaimManager` being configured in factory and a nonzero vault for draft.
+
+## 6.3 Checkpoint settlement flow
 
 ```mermaid
 sequenceDiagram
-  participant U as User
-  participant MR as MarketRegistry
+  participant SR as SettlementRouter
+  participant CS as ChannelSettlement
   participant EL as ExecutionLedger
-  participant V as Vault
+  participant TV as Trading Vault (MAV/CV)
+  participant LV as LiquidityVault4626
+  participant FP as FeePool
 
-  U->>MR: redeem(marketId)
-  MR->>EL: positionOf(user, marketId, winningOutcome)
-  MR->>V: redeemPayout(user, asset, amount)
-  V-->>U: transfer(asset, amount)
+  SR->>CS: submitCheckpointFromPayload(...)
+  CS->>CS: store pending + challenge window
+  CS->>CS: finalizeCheckpoint(...)
+  CS->>EL: applyDeltas
+  CS->>TV: apply net cash deltas (post fee split)
+  CS->>LV: payToTradingLedger if netTraderDelta > 0
+  CS->>TV: transfer to LV if netTraderDelta < 0
+  CS->>TV: protocol/lp/creator fee routing transfers
+  CS->>FP: record protocol fee
 ```
 
-## 7. Contract-by-Contract Architecture Notes
-
-## 7.1 `ReceiverTemplate`
+## 6.4 Redeem flow
+
+- User calls `MarketRegistry.redeem(marketId)`.
+- Registry resolves winning outcome index.
+- Reads `ExecutionLedger.positionOf(user, marketId, winningOutcome)`.
+- If positive and not redeemed before, pays from:
+  - `MultiAssetVault.redeemPayout(user, asset, amount)` if configured
+  - else `CollateralVault.redeemPayout(user, amount)`.
+
+## 7) Detailed Contract Mechanics
+
+## 7.1 `DraftClaimManager` (new economics path)
+
+New path:
+- `claimAndSeed(draftId, asset, seedAmount, deadline, sig)`
+- Enforces:
+  - draft must be `Proposed`
+  - signature validity on typed `ClaimAndSeed`
+  - liquidity vault factory configured
+  - `seedAmount >= draft.minSeed`
+  - asset matches draft settlement asset (if set)
+- Actions:
+  - deploy/get per-draft `LiquidityVault4626`
+  - pull tokens from claimer to manager
+  - approve + deposit into vault on behalf of claimer
+  - store claim and lock metadata
+  - call `draftBoard.setClaimed`
+
+Legacy path still present:
+- `claimDraft(...)` without seed deposit.
+
+## 7.2 `LiquidityVaultFactory` + `LiquidityVault4626`
+
+Factory:
+- idempotent vault deployment per `draftId`
+- callable by any address
+
+Vault:
+- ERC-4626 wrapper over one asset
+- settlement hook `payToTradingLedger(to, amount)` only callable by configured `channelSettlement`
+
+## 7.3 `MarketFactory.createFromDraft`
+
+Current curated creation behavior:
+- gated by `approvedPublishReceivers`
+- reads draft settlement asset
+- resolves timing from params with fallback to draft fields
+- uses full-param create functions in `MarketRegistry`
+- if draft has liquidity vault in `DraftClaimManager`, calls `marketRegistry.setLiquidityVault`
+- marks draft published and maps `draftIdByMarketId`
+
+CRE feed creation behavior (non-curated):
+- still supports v1/v2 market input payloads (`0x02` for v2 typed)
+- creates markets via `PREDICTION_MARKET` interface target (now often `PoolMarketLegacy` in tests)
+
+## 7.4 `ChannelSettlement` fee and net-flow model
+
+During `_applyCashDeltasAndFees`:
+- determines settlement asset via registry (`getSettlementAsset`) in multi-asset mode.
+- for each positive trader `cashDelta`, calls `FeeManager.computeSplit`.
+- accumulates `protocolFee`, `lpFee`, `creatorFee`.
+- applies net `cashDelta` set to trading vault.
+- computes `netTraderDelta = sum(net cash deltas)`.
+
+During `finalizeCheckpoint`:
+- settlement invariants checked.
+- applies share deltas first.
+- applies cash deltas and fee accounting.
+- reads market liquidity vault from registry.
+- if liquidity vault exists:
+  - `netTraderDelta > 0`: LP vault pays trading vault
+  - `netTraderDelta < 0`: trading vault pays LP vault
+- routes fees:
+  - protocol fee -> `FeePool` (if configured and channel is feeCollector)
+  - lp fee -> LP vault donation if LP shares exist, else fallback to treasury
+  - creator fee -> market creator address
+
+## 7.5 `FeeManager` split semantics
+
+- `protocolFeeBps` is total fee rate cap-limited to 2%.
+- fee split percentages:
+  - `lpFeeShareBps`
+  - `creatorFeeShareBps`
+  - remainder goes to protocol bucket
+- `computeSplit` returns `(protocolFee, lpFee, creatorFee, netDelta)`.
+
+## 7.6 `PoolMarketLegacy` trading update
+
+New behavior versus old one-shot model:
+- users can add to existing same-outcome position.
+- cannot add directly to opposite outcome without reducing first.
+- new reducers:
+  - `reducePosition`
+  - `reduceAll`
+  - typed equivalents
+- prediction claim remains pro-rata pool payout post-settlement.
+
+## 8) Access-Control Matrix (Current)
+
+| Contract | Operation | Guard |
+|---|---|---|
+| `ReportValidator` | `setMinConfidence` | `onlyOwner` |
+| `Treasury` | `setMarketApproved` | `onlyOwner` |
+| `OracleCoordinator` | `submitResult/submitSession` | `msg.sender == creReceiver` |
+| `SettlementRouter` | `settleMarket/finalizeSession` | `msg.sender == oracleCoordinator` |
+| `SettlementRouter` | market settlement target | optional allowlist |
+| `MarketRegistry` | `resolve` | `msg.sender == settlementRouter` |
+| `MarketRegistry` | createFor/withParams + setLiquidityVault | `msg.sender == marketFactory` |
+| `ExecutionLedger` | `applyDeltas` | `msg.sender == channelSettlement` |
+| `CollateralVault` | mutating settlement functions | `msg.sender == channelSettlement` |
+| `MultiAssetVault` | mutating settlement functions | `msg.sender == channelSettlement` |
+| `LiquidityVault4626` | `payToTradingLedger` | `msg.sender == channelSettlement` |
+| `MarketDraftBoard` | propose draft | `AI_ORACLE_ROLE` |
+| `MarketDraftBoard` | mark published | `PUBLISH_CALLER_ROLE` |
 
-Purpose:
-- Canonical security wrapper for CRE report entrypoints.
+## 9) Invariants Enforced in Code Today
 
-Security features:
-- Forwarder sender enforcement
-- Optional workflow ID / owner / name checks
-- Warning if forwarder is disabled (`address(0)`) via event
+1. Checkpoint signer coverage
+- every delta user must be signed.
+- duplicate signer list entries are rejected.
 
-Used by:
-- `PredictionMarket`
-- `PoolMarketLegacy`
-- `MarketFactory`
-- `CREReceiver`
-- `CREPublishReceiver`
+2. Nonce monotonicity + challenge window
+- stale/replayed checkpoint nonces rejected.
+- finalize before challenge deadline rejected.
 
-## 7.2 `CREReceiver`
+3. Market close boundary
+- `lastTradeAt > tradingClose` rejected at finalize.
 
-Purpose:
-- Normalize raw CRE reports into coordinator calls.
+4. Resolution authority
+- direct unauthorized market resolve rejected.
 
-Current route split:
-- session reports (`0x03`) -> `submitSession`
-- result tuples -> `submitResult`
+5. Fee cap
+- total fee bps capped in `FeeManager`.
 
-## 7.3 `OracleCoordinator`
+6. Typed market bounds
+- outcome/windows cardinality and index validity enforced.
 
-Purpose:
-- Enforce trusted receiver boundary and optional confidence validation.
+## 10) ChangesTarget2 Mapping (Current)
 
-Key behavior:
-- confidence validation done by low-level call to `reportValidator.validate(uint16)`
-- routes to `SettlementRouter` only
+## 10.1 Implemented
 
-## 7.4 `SettlementRouter`
+- Draft includes `settlementAsset` + `minSeed`.
+- `claimAndSeed` path implemented with ERC-4626 deposit.
+- Per-draft liquidity vault deployment (`LiquidityVaultFactory`).
+- Market creation binds to full timing params in curated flow.
+- Registry stores `liquidityVaultByMarketId`.
+- Settlement includes:
+  - net trader delta reconciliation with LP vault
+  - protocol/lp/creator fee split routing
+- Pool market supports add/reduce/switch flow for positions.
 
-Purpose:
-- Dispatch validated oracle outputs to markets/session consumers.
+## 10.2 Partial
 
-Current architecture traits:
-- allowlist-based receiver hardening is implemented but optional (`useReceiverAllowlist`)
-- session route preference:
-  1. `channelSettlement` if set
-  2. else `sessionFinalizer`
-- session emit event currently reuses `MarketSettled` placeholder semantics
+- Seed lock is metadata-only today:
+  - `seedSharesLocked` and `seedUnlockTime` are tracked
+  - but shares are minted directly to claimer wallet and not escrowed/locked at token-transfer level.
 
-## 7.5 `MarketRegistry`
+- Claim = seed is not mandatory globally:
+  - legacy `claimDraft` still allows draft claim without seed.
+  - publish path accepts claimed drafts regardless of whether claim used seed path.
 
-Purpose:
-- Canonical market state for execution lane.
+- Multi-asset routing is implemented in settlement/redemption but not fully universal across all non-curated creation inputs.
 
-Important behaviors:
-- supports binary/categorical/timeline
-- resolution gated to router only
-- `freeze` is permissionless once `tradingClose` reached
-- redeem is one-time per user per market
-- supports legacy single-asset vault or multi-asset vault path
+## 10.3 Missing relative to broader target vision
 
-Notable implementation detail:
-- create APIs set `tradingClose` and `resolveTime` to `expiry` by default
+- Resolution dispute manager (`ResolutionManager`) with bond/evidence/challenge lifecycle.
+- Checkpoint v2 transcript fields (`epoch/accountsRoot/txRoot/prevStateHash/policyHash`).
+- Risk sentinel/manager enforcement hooks.
+- CCIP gateway + market mirror cross-chain modules.
 
-## 7.6 `ChannelSettlement`
+## 11) Current Risks / Technical Debt (Implementation-Exact)
 
-Purpose:
-- Checkpoint lifecycle and settlement application.
+1. LP solvency depends on vault funding presence
+- If no liquidity vault bound to market, net trader delta reconciliation step is skipped.
 
-Validation pipeline:
-1. bounds checks (`MAX_DELTAS`, `MAX_USERS`)
-2. deltas hash check
-3. timing window check (`validAfter`/`validBefore`)
-4. operator signature check
-5. user signatures check
-6. signer coverage checks:
-- unique users
-- every delta user signed
-7. nonce monotonicity and challenge logic
+2. Seed lock is not hard-enforced on ERC-4626 shares
+- `unlockSeedShares` emits state/event only; no transfer restriction is enforced on actual shares.
 
-Finalize pipeline:
-1. pending existence + challenge window expiration
-2. deltas hash matches pending
-3. market lifecycle binding:
-- reject if market already resolved
-- reject if `lastTradeAt > tradingClose`
-4. apply share deltas to ledger
-5. apply cash deltas net of fees to vault
-6. transfer fee to `FeePool` and emit fee record
-7. commit nonce and clear pending
-
-Current limitation:
-- challenge path still requires operator signature on newer checkpoint.
-
-## 7.7 `ExecutionLedger`
+3. Draft claim path duality
+- `claimDraft` and `claimAndSeed` coexist; policy does not force seeded claims in publish flow.
 
-Purpose:
-- Canonical position store; no pricing logic onchain.
-
-Invariant:
-- no position can become negative (`NegativePosition` revert).
-
-## 7.8 `CollateralVault` and `MultiAssetVault`
-
-Purpose:
-- Custody and cash-delta accounting for settlement path.
-
-Common behavior:
-- deposit/withdraw user free balances
-- lock/unlock per session
-- apply signed cash deltas from settlement
-- only market registry can pay redemption transfers
-
-Difference:
-- `CollateralVault`: single token
-- `MultiAssetVault`: per-asset balance domain
+4. Session routing event semantics
+- `SettlementRouter.finalizeSession` emits `MarketSettled(address(0),0,0,0)` placeholder event rather than dedicated session route event.
 
-Adapter:
-- `CollateralVaultAdapter` exposes single-token vault via `IMultiAssetVault`
+5. `LiquidityVaultFactory.createVaultForDraft` is open callable
+- idempotent and safe in practice, but not role-restricted.
 
-## 7.9 Fee stack
-
-`FeeManager`:
-- owner-settable `protocolFeeBps`
-- hard cap `MAX_PROTOCOL_FEE_BPS = 200` (2%)
-- fee only on positive pnl delta
+## 12) Test Coverage Snapshot
 
-`FeePool`:
-- receives tokens from vault fee transfer
-- records fee accounting events
-- owner can sweep assets to treasury pool
+Covered by current tests:
 
-`TreasuryPool`:
-- long-term treasury balance and controlled spend
+- Security hardening: `test/SecurityHardening.t.sol`
+- Checkpoint validity/lifecycle: `test/CheckpointFlow.t.sol`
+- Fee extraction basics: `test/FeeFlow.t.sol`
+- Curated flow + claimAndSeed path: `test/CurationFlow.t.sol`
+- Oracle ingress/routing: `test/OracleFlow.t.sol`
+- Typed market creation: `test/MarketTypes.t.sol`
+- Legacy session finalization fallback: `test/YellowSessionFlow.t.sol`
+- Pool add/reduce/switch position behavior: `test/PoolMarketTrading.t.sol`
 
-## 7.10 Curation stack
+## 13) Practical Current Production Path
 
-`MarketDraftBoard`:
-- role-based proposal and publish lifecycle control
-- keeps draft registry and statuses
+For this architecture state, the intended lane is:
 
-`DraftClaimManager`:
-- EIP-712 claim signature verification
-- tracks claim metadata and nonce
+1. Curated draft proposal with settlement asset and min seed.
+2. Prefer `claimAndSeed` (not legacy claim) so liquidity vault exists.
+3. Publish via `CREPublishReceiver` -> `MarketFactory.createFromDraft`.
+4. Trade offchain, settle checkpoints through `ChannelSettlement`.
+5. Resolve via oracle path into `MarketRegistry`.
+6. Redeem through registry from configured vault path.
 
-`MarketPolicy`:
-- checks market-type bitmap
-- resolve-spec allowlist option
-- min/max duration and max outcomes controls
-
-`CREPublishReceiver`:
-- verifies draft status and claimer identity
-- verifies signed publish params
-- calls policy validation
-- creates market via factory and marks draft published
-
-## 7.11 Legacy contracts
-
-`PredictionMarket` and `PoolMarketLegacy`:
-- pool-based pro-rata payout models
-- user can change prediction/session
-- typed markets supported
-- used for demo/legacy compatibility
-
-`SessionFinalizer`:
-- backend + per-user signed payout snapshot
-- direct token transfer fallback path
-- no checkpoint challenge mechanism
-
-## 8. State Machines
-
-## 8.1 Registry market lifecycle
-
-```mermaid
-stateDiagram-v2
-  [*] --> Draft
-  Draft --> Open: create market
-  Open --> Frozen: freeze() after tradingClose
-  Open --> Resolved: resolve
-  Frozen --> Resolved: resolve
-```
-
-## 8.2 Checkpoint lifecycle
-
-```mermaid
-stateDiagram-v2
-  [*] --> None
-  None --> Pending: submitCheckpoint
-  Pending --> Pending: challengeCheckpoint with newer nonce
-  Pending --> Finalized: finalizeCheckpoint after window
-  Finalized --> Pending: submit newer checkpoint (higher nonce)
-```
-
-## 8.3 Draft lifecycle
-
-```mermaid
-stateDiagram-v2
-  [*] --> Proposed
-  Proposed --> Claimed: setClaimed by DraftClaimManager
-  Claimed --> Published: markPublished by publish caller
-  Proposed --> Cancelled: owner cancel
-  Claimed --> Cancelled: owner cancel
-  Proposed --> Expired: owner expire
-  Claimed --> Expired: owner expire
-```
-
-## 9. Invariants and Safety Properties
-
-## 9.1 Enforced today
-
-1. Market resolution authority
-- unauthorized caller cannot invoke `MarketRegistry.resolve`
-
-2. Checkpoint signer coverage
-- no unsigned delta user can be settled
-
-3. Nonce monotonicity
-- stale/replayed checkpoint nonce rejected
-
-4. Challenge window
-- finalize before window end rejected
-
-5. Trading-close settlement boundary
-- `lastTradeAt` after `tradingClose` rejected at finalize
-
-6. Fee cap
-- protocol fee cannot exceed 2%
-
-## 9.2 Partially enforced or TODO-level
-
-1. Curated seed economics
-- `minCreatorSeed` exists in policy but is not enforced in publish flow
-
-2. Draft timing fidelity
-- publish params include trading open/close, but market create path mostly sets timing from expiry only
-
-3. Multi-asset completeness
-- asset-aware vault path exists, but asset injection is not yet universal in all creation/report flows
-
-## 10. Tests and Coverage Mapping
-
-Current test files:
-- `test/SecurityHardening.t.sol`
-- `test/CheckpointFlow.t.sol`
-- `test/FeeFlow.t.sol`
-- `test/CurationFlow.t.sol`
-- `test/OracleFlow.t.sol`
-- `test/MarketTypes.t.sol`
-- `test/YellowSessionFlow.t.sol`
-
-Coverage highlights:
-
-1. Security hardening
-- unauthorized resolve, validator admin, treasury admin
-- unsigned delta user rejection
-- tradingClose boundary rejection
-
-2. Checkpoint flow
-- bad hashes/signatures
-- challenge and finalize timing
-- nonce progression
-
-3. Fee flow
-- positive pnl fee extraction
-- fee cap enforcement
-- fee accumulation in `FeePool`
-
-4. Curation flow
-- draft propose -> claim -> publish -> market creation
-
-5. Oracle routing
-- end-to-end CRE receiver to market settlement
-
-6. Legacy session fallback
-- `0x03` session report routes to `SessionFinalizer` when configured
-
-## 11. Current Architectural Assessment
-
-The current codebase has already implemented most of the planned P0/P1 hardening and modularization:
-- secure routing and access control
-- checkpoint signer coverage
-- settlement-time fee enforcement
-- curated draft lifecycle contracts
-- optional multi-asset custody module
-
-Remaining architecture work is mainly in advanced governance and scale layers:
-- resolution dispute manager
-- checkpoint transcript v2 fields
-- risk/sentinel hook layer
-- cross-chain CCIP hub-spoke architecture
-
-This document reflects the current deployed code shape, not the aspirational end-state.
+This document describes current onchain behavior exactly as implemented in this repository state.
