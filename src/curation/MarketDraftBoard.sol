@@ -34,6 +34,8 @@ contract MarketDraftBoard is Ownable, AccessControl {
         uint48 tradingOpen;
         uint48 tradingClose;
         uint48 resolveTime;
+        address settlementAsset; // 0 = use policy default
+        uint256 minSeed; // e.g. 50e6 for USDC
         DraftStatus status;
         address creator;
         uint256 proposedAt;
@@ -91,7 +93,9 @@ contract MarketDraftBoard is Ownable, AccessControl {
         bytes32 resolveSpecHash_,
         uint48 tradingOpen_,
         uint48 tradingClose_,
-        uint48 resolveTime_
+        uint48 resolveTime_,
+        address settlementAsset_,
+        uint256 minSeed_
     ) external onlyRole(AI_ORACLE_ROLE) returns (bytes32 draftId) {
         draftId = keccak256(
             abi.encodePacked(
@@ -115,6 +119,8 @@ contract MarketDraftBoard is Ownable, AccessControl {
             tradingOpen: tradingOpen_,
             tradingClose: tradingClose_,
             resolveTime: resolveTime_,
+            settlementAsset: settlementAsset_,
+            minSeed: minSeed_,
             status: DraftStatus.Proposed,
             creator: address(0),
             proposedAt: block.timestamp

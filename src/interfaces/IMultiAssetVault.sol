@@ -27,4 +27,7 @@ interface IMultiAssetVault {
 
     /// @notice Transfer tokens to fee collector; only ChannelSettlement.
     function transferToFeeCollector(address to, address asset, uint256 amount) external;
+
+    /// @notice Transfer asset to any address (fee routing, net PnL). Only ChannelSettlement.
+    function transferAsset(address to, address asset, uint256 amount) external;
 }

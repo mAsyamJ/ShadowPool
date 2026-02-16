@@ -519,7 +519,7 @@ Adapter:
 
 `PredictionMarket` and `PoolMarketLegacy`:
 - pool-based pro-rata payout models
-- one-shot prediction per user
+- user can change prediction/session
 - typed markets supported
 - used for demo/legacy compatibility
 

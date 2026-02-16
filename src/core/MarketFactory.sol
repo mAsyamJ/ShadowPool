@@ -5,6 +5,7 @@ import {ReceiverTemplate} from "../interfaces/ReceiverTemplate.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {MarketDraftBoard} from "../curation/MarketDraftBoard.sol";
+import {DraftClaimManager} from "../curation/DraftClaimManager.sol";
 
 /// @notice Interface for the prediction market.
 interface IPredictionMarket {
@@ -45,6 +46,33 @@ interface IMarketRegistryCreate {
     function createTimelineMarketForWithExpiry(string memory question, uint48[] memory windows, address requestedBy, uint48 expiry)
         external
         returns (uint256);
+    function createMarketForWithFullParams(
+        string memory question,
+        address requestedBy,
+        uint48 tradingOpen,
+        uint48 tradingClose,
+        uint48 resolveTime,
+        address settlementAsset
+    ) external returns (uint256);
+    function createCategoricalMarketForWithFullParams(
+        string memory question,
+        string[] memory outcomes,
+        address requestedBy,
+        uint48 tradingOpen,
+        uint48 tradingClose,
+        uint48 resolveTime,
+        address settlementAsset
+    ) external returns (uint256);
+    function createTimelineMarketForWithFullParams(
+        string memory question,
+        uint48[] memory windows,
+        address requestedBy,
+        uint48 tradingOpen,
+        uint48 tradingClose,
+        uint48 resolveTime,
+        address settlementAsset
+    ) external returns (uint256);
+    function setLiquidityVault(uint256 marketId, address vault) external;
 }
 
 /// @title MarketFactory
@@ -168,6 +196,7 @@ contract MarketFactory is ReceiverTemplate {
 
     IMarketRegistryCreate public marketRegistry;
     MarketDraftBoard public draftBoard;
+    DraftClaimManager public draftClaimManager;
     mapping(address => bool) public approvedPublishReceivers;
     mapping(uint256 => bytes32) public draftIdByMarketId;
 
@@ -204,12 +233,17 @@ contract MarketFactory is ReceiverTemplate {
         draftBoard = MarketDraftBoard(board);
     }
 
+    /// @notice Set DraftClaimManager for liquidity vault binding.
+    function setDraftClaimManager(address claimManager) external onlyOwner {
+        draftClaimManager = DraftClaimManager(claimManager);
+    }
+
     /// @notice Approve or revoke a publish receiver (e.g. CREPublishReceiver).
     function setPublishReceiverApproved(address receiver, bool approved) external onlyOwner {
         approvedPublishReceivers[receiver] = approved;
     }
 
-    /// @notice Create market from claimed draft. Only approved publish receivers.
+    /// @notice Create market from claimed draft. Uses draft times exactly, binds liquidity vault if claimAndSeed used.
     function createFromDraft(
         bytes32 draftId,
         address creator,
@@ -219,31 +253,55 @@ contract MarketFactory is ReceiverTemplate {
         if (address(marketRegistry) == address(0)) revert CuratedPathNotConfigured();
         if (address(draftBoard) == address(0)) revert CuratedPathNotConfigured();
 
-        uint48 expiry = params.resolveTime;
+        MarketDraftBoard.Draft memory d = draftBoard.getDraft(draftId);
+        address settlementAsset = d.settlementAsset;
+        uint48 tradingOpen = params.tradingOpen != 0 ? params.tradingOpen : d.tradingOpen;
+        uint48 tradingClose = params.tradingClose != 0 ? params.tradingClose : d.tradingClose;
+        uint48 resolveTime = params.resolveTime != 0 ? params.resolveTime : d.resolveTime;
 
         if (params.marketType == MARKET_TYPE_BINARY) {
-            marketId = marketRegistry.createMarketForWithExpiry(params.question, creator, expiry);
+            marketId = marketRegistry.createMarketForWithFullParams(
+                params.question,
+                creator,
+                tradingOpen,
+                tradingClose,
+                resolveTime,
+                settlementAsset
+            );
         } else if (params.marketType == MARKET_TYPE_CATEGORICAL) {
             if (params.outcomes.length < 2) revert InvalidOutcomeCount();
-            marketId = marketRegistry.createCategoricalMarketForWithExpiry(
+            marketId = marketRegistry.createCategoricalMarketForWithFullParams(
                 params.question,
                 params.outcomes,
                 creator,
-                expiry
+                tradingOpen,
+                tradingClose,
+                resolveTime,
+                settlementAsset
             );
         } else if (params.marketType == MARKET_TYPE_TIMELINE) {
             if (params.timelineWindows.length < 2) revert InvalidOutcomeCount();
             for (uint256 i = 1; i < params.timelineWindows.length; i++) {
                 if (params.timelineWindows[i] <= params.timelineWindows[i - 1]) revert InvalidTimelineWindows();
             }
-            marketId = marketRegistry.createTimelineMarketForWithExpiry(
+            marketId = marketRegistry.createTimelineMarketForWithFullParams(
                 params.question,
                 params.timelineWindows,
                 creator,
-                expiry
+                tradingOpen,
+                tradingClose,
+                resolveTime,
+                settlementAsset
             );
         } else {
             revert InvalidMarketType();
+        }
+
+        address liquidityVault = address(draftClaimManager) != address(0)
+            ? draftClaimManager.getLiquidityVault(draftId)
+            : address(0);
+        if (liquidityVault != address(0)) {
+            marketRegistry.setLiquidityVault(marketId, liquidityVault);
         }
 
         draftBoard.markPublished(draftId, marketId);

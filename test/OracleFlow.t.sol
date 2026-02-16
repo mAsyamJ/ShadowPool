@@ -2,7 +2,7 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {PredictionMarket} from "../src/core/PredictionMarket.sol";
+import {PoolMarketLegacy} from "../src/core/PoolMarketLegacy.sol";
 import {SettlementRouter} from "../src/core/SettlementRouter.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {OracleCoordinator} from "../src/oracle/OracleCoordinator.sol";
@@ -12,7 +12,7 @@ contract OracleFlowTest is Test {
     SettlementRouter private router;
     OracleCoordinator private coordinator;
     CREReceiver private receiver;
-    PredictionMarket private market;
+    PoolMarketLegacy private market;
     ERC20Mock private token;
 
     address private forwarder = address(0x1234);
@@ -28,7 +28,7 @@ contract OracleFlowTest is Test {
 
         token = new ERC20Mock();
         token.mint(address(this), 1000 ether);
-        market = new PredictionMarket(address(router), address(token));
+        market = new PoolMarketLegacy(address(router), address(token));
         market.createMarket("Will BTC be above 50k?");
     }
 
@@ -37,7 +37,7 @@ contract OracleFlowTest is Test {
         vm.prank(forwarder);
         receiver.onReport("", report);
 
-        PredictionMarket.Market memory m = market.getMarket(0);
+        PoolMarketLegacy.Market memory m = market.getMarket(0);
 
         assertTrue(m.settled);
         assertEq(m.confidence, 9000);

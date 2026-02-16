@@ -11,6 +11,7 @@ import {MarketFactory} from "../src/core/MarketFactory.sol";
 import {MarketRegistry} from "../src/core/MarketRegistry.sol";
 import {CollateralVault} from "../src/execution/CollateralVault.sol";
 import {ExecutionLedger} from "../src/execution/ExecutionLedger.sol";
+import {LiquidityVaultFactory} from "../src/curation/LiquidityVaultFactory.sol";
 
 contract CurationFlowTest is Test {
     address forwarder = address(0x1234);
@@ -72,6 +73,25 @@ contract CurationFlowTest is Test {
         assertEq(m.question, "Will X happen?");
     }
 
+    function testClaimAndSeedPipeline() public {
+        LiquidityVaultFactory vaultFactory = new LiquidityVaultFactory(address(0));
+        vm.prank(draftClaimManager.owner());
+        draftClaimManager.setLiquidityVaultFactory(address(vaultFactory));
+        marketFactory.setDraftClaimManager(address(draftClaimManager));
+
+        token.mint(creator, 100 ether);
+        vm.prank(creator);
+        token.approve(address(draftClaimManager), 100 ether);
+
+        bytes32 draftId = _proposeDraftWithSeed(address(token), 50 ether);
+        _claimAndSeed(draftId);
+        _publishDraft(draftId);
+
+        assertEq(uint8(draftBoard.getStatus(draftId)), uint8(MarketDraftBoard.DraftStatus.Published));
+        assertEq(marketRegistry.getCreator(0), creator);
+        assertTrue(marketRegistry.liquidityVaultByMarketId(0) != address(0));
+    }
+
     function _proposeDraft() internal returns (bytes32 draftId) {
         bytes32 questionHash = keccak256("Will X happen?");
         bytes32 outcomesHash = keccak256(abi.encode(_strs("Yes", "No")));
@@ -86,9 +106,41 @@ contract CurationFlowTest is Test {
             resolveSpecHash,
             0,
             uint48(block.timestamp + 86400),
-            uint48(block.timestamp + 86400)
+            uint48(block.timestamp + 86400),
+            address(0),
+            0
         );
         assertEq(uint8(draftBoard.getStatus(draftId)), uint8(MarketDraftBoard.DraftStatus.Proposed));
+    }
+
+    function _proposeDraftWithSeed(address settlementAsset, uint256 minSeed) internal returns (bytes32 draftId) {
+        bytes32 questionHash = keccak256("Will X happen?");
+        bytes32 outcomesHash = keccak256(abi.encode(_strs("Yes", "No")));
+        bytes32 resolveSpecHash = keccak256("resolver-v1");
+        vm.prank(address(this));
+        draftId = draftBoard.proposeDraft(
+            questionHash,
+            "ipfs://QmQuestion",
+            MarketDraftBoard.MarketType.Binary,
+            outcomesHash,
+            "ipfs://QmOutcomes",
+            resolveSpecHash,
+            0,
+            uint48(block.timestamp + 86400),
+            uint48(block.timestamp + 86400),
+            settlementAsset,
+            minSeed
+        );
+        assertEq(uint8(draftBoard.getStatus(draftId)), uint8(MarketDraftBoard.DraftStatus.Proposed));
+    }
+
+    function _claimAndSeed(bytes32 draftId) internal {
+        bytes32 claimDigest = draftClaimManager.digestClaimAndSeed(draftId, address(token), 50 ether, 0, creator);
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(creatorPk, claimDigest);
+        vm.prank(creator);
+        draftClaimManager.claimAndSeed(draftId, address(token), 50 ether, 0, abi.encodePacked(r, s, v));
+        assertEq(uint8(draftBoard.getStatus(draftId)), uint8(MarketDraftBoard.DraftStatus.Claimed));
+        assertEq(draftClaimManager.getClaimer(draftId), creator);
     }
 
     function _claimDraft(bytes32 draftId) internal {

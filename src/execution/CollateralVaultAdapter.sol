@@ -76,6 +76,11 @@ contract CollateralVaultAdapter is IMultiAssetVault {
         vault.transferToFeeCollector(to, amount);
     }
 
+    function transferAsset(address to, address asset, uint256 amount) external override {
+        _requireToken(asset);
+        vault.transferToFeeCollector(to, amount);
+    }
+
     /// @notice Returns the single token for this adapter.
     function token() external view returns (address) {
         return vault.token();

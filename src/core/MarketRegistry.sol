@@ -56,6 +56,7 @@ contract MarketRegistry is IMarketRegistry, Ownable {
     mapping(uint256 => uint32) public typedOutcomeIndex;
     mapping(uint256 => mapping(address => bool)) internal hasRedeemed;
     mapping(uint256 => address) public settlementAssetByMarketId;
+    mapping(uint256 => address) public liquidityVaultByMarketId;
     address public marketFactory;
     address public settlementRouter;
     IMultiAssetVault public multiAssetVault;
@@ -111,6 +112,17 @@ contract MarketRegistry is IMarketRegistry, Ownable {
     /// @notice Returns trading close timestamp for market; 0 means no enforcement.
     function getTradingClose(uint256 marketId) external view returns (uint48) {
         return markets[marketId].tradingClose;
+    }
+
+    /// @notice Returns creator for market (for settlement fee routing).
+    function getCreator(uint256 marketId) external view returns (address) {
+        return markets[marketId].creator;
+    }
+
+    /// @notice Set liquidity vault for market. Only MarketFactory.
+    function setLiquidityVault(uint256 marketId, address vaultAddr) external {
+        if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        liquidityVaultByMarketId[marketId] = vaultAddr;
     }
 
     /// @notice Freeze market when block.timestamp >= tradingClose. Permissionless.
@@ -184,6 +196,37 @@ contract MarketRegistry is IMarketRegistry, Ownable {
         emit MarketCreated(marketId, question, requestedBy);
     }
 
+    /// @notice Create binary market with explicit timing (curated path). Uses draft times exactly.
+    function createMarketForWithFullParams(
+        string memory question,
+        address requestedBy,
+        uint48 tradingOpen_,
+        uint48 tradingClose_,
+        uint48 resolveTime_,
+        address settlementAsset_
+    ) public returns (uint256 marketId) {
+        if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        uint48 expiry_ = resolveTime_ != 0 ? resolveTime_ : tradingClose_;
+        marketId = nextMarketId++;
+        marketTypeById[marketId] = MarketType.Binary;
+        markets[marketId] = Market({
+            creator: requestedBy,
+            createdAt: uint48(block.timestamp),
+            expiry: expiry_,
+            tradingOpen: tradingOpen_,
+            tradingClose: tradingClose_,
+            resolveTime: resolveTime_,
+            settledAt: 0,
+            settled: false,
+            frozen: false,
+            confidence: 0,
+            outcome: Prediction.Yes,
+            question: question
+        });
+        if (settlementAsset_ != address(0)) settlementAssetByMarketId[marketId] = settlementAsset_;
+        emit MarketCreated(marketId, question, requestedBy);
+    }
+
     function createCategoricalMarket(string memory question, string[] memory outcomes) external returns (uint256 marketId) {
         return createCategoricalMarketWithExpiry(question, outcomes, 0);
     }
@@ -225,6 +268,34 @@ contract MarketRegistry is IMarketRegistry, Ownable {
         if (msg.sender != marketFactory) revert UnauthorizedFactory();
         marketId = nextMarketId++;
         _initTypedMarket(marketId, question, requestedBy, MarketType.Categorical, outcomes.length, expiry_);
+        categoricalOutcomes[marketId] = outcomes;
+        if (settlementAsset_ != address(0)) settlementAssetByMarketId[marketId] = settlementAsset_;
+    }
+
+    /// @notice Create categorical market with explicit timing (curated path).
+    function createCategoricalMarketForWithFullParams(
+        string memory question,
+        string[] memory outcomes,
+        address requestedBy,
+        uint48 tradingOpen_,
+        uint48 tradingClose_,
+        uint48 resolveTime_,
+        address settlementAsset_
+    ) public returns (uint256 marketId) {
+        if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        uint48 expiry_ = resolveTime_ != 0 ? resolveTime_ : tradingClose_;
+        marketId = nextMarketId++;
+        _initTypedMarketWithFullParams(
+            marketId,
+            question,
+            requestedBy,
+            MarketType.Categorical,
+            outcomes.length,
+            tradingOpen_,
+            tradingClose_,
+            resolveTime_,
+            expiry_
+        );
         categoricalOutcomes[marketId] = outcomes;
         if (settlementAsset_ != address(0)) settlementAssetByMarketId[marketId] = settlementAsset_;
     }
@@ -274,6 +345,34 @@ contract MarketRegistry is IMarketRegistry, Ownable {
         if (settlementAsset_ != address(0)) settlementAssetByMarketId[marketId] = settlementAsset_;
     }
 
+    /// @notice Create timeline market with explicit timing (curated path).
+    function createTimelineMarketForWithFullParams(
+        string memory question,
+        uint48[] memory windows,
+        address requestedBy,
+        uint48 tradingOpen_,
+        uint48 tradingClose_,
+        uint48 resolveTime_,
+        address settlementAsset_
+    ) public returns (uint256 marketId) {
+        if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        uint48 expiry_ = resolveTime_ != 0 ? resolveTime_ : tradingClose_;
+        marketId = nextMarketId++;
+        _initTypedMarketWithFullParams(
+            marketId,
+            question,
+            requestedBy,
+            MarketType.Timeline,
+            windows.length,
+            tradingOpen_,
+            tradingClose_,
+            resolveTime_,
+            expiry_
+        );
+        _storeTimelineWindows(marketId, windows);
+        if (settlementAsset_ != address(0)) settlementAssetByMarketId[marketId] = settlementAsset_;
+    }
+
     function _initTypedMarket(
         uint256 marketId,
         string memory question,
@@ -291,6 +390,37 @@ contract MarketRegistry is IMarketRegistry, Ownable {
             tradingOpen: 0,
             tradingClose: expiry_,
             resolveTime: expiry_,
+            settledAt: 0,
+            settled: false,
+            frozen: false,
+            confidence: 0,
+            outcome: Prediction.Yes,
+            question: question
+        });
+        emit MarketCreated(marketId, question, creator);
+        emit MarketCreatedTyped(marketId, mt, outcomesCount);
+    }
+
+    function _initTypedMarketWithFullParams(
+        uint256 marketId,
+        string memory question,
+        address creator,
+        MarketType mt,
+        uint256 outcomesCount,
+        uint48 tradingOpen_,
+        uint48 tradingClose_,
+        uint48 resolveTime_,
+        uint48 expiry_
+    ) internal {
+        if (outcomesCount < 2) revert InvalidOutcomeCount();
+        marketTypeById[marketId] = mt;
+        markets[marketId] = Market({
+            creator: creator,
+            createdAt: uint48(block.timestamp),
+            expiry: expiry_,
+            tradingOpen: tradingOpen_,
+            tradingClose: tradingClose_,
+            resolveTime: resolveTime_,
             settledAt: 0,
             settled: false,
             frozen: false,

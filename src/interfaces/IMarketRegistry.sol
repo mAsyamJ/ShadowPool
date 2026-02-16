@@ -19,6 +19,8 @@ interface IMarketRegistry {
     function status(uint256 marketId) external view returns (Status);
     function getTradingClose(uint256 marketId) external view returns (uint48);
     function getSettlementAsset(uint256 marketId) external view returns (address);
+    function getCreator(uint256 marketId) external view returns (address);
+    function liquidityVaultByMarketId(uint256 marketId) external view returns (address);
     function resolve(uint256 marketId, uint32 winningOutcome, uint16 confidence) external;
     function redeem(uint256 marketId) external returns (uint256 payout);
 }

@@ -2,12 +2,12 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
-import {PredictionMarket} from "../src/core/PredictionMarket.sol";
+import {PoolMarketLegacy} from "../src/core/PoolMarketLegacy.sol";
 import {MarketFactory} from "../src/core/MarketFactory.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 
 contract MarketTypesTest is Test {
-    PredictionMarket private market;
+    PoolMarketLegacy private market;
     MarketFactory private factory;
     ERC20Mock private token;
     address private forwarder = address(0x1234);
@@ -20,7 +20,7 @@ contract MarketTypesTest is Test {
         ERC20Mock deployed = new ERC20Mock();
         vm.etch(TOKEN_ADDRESS, address(deployed).code);
         token = ERC20Mock(TOKEN_ADDRESS);
-        market = new PredictionMarket(forwarder, TOKEN_ADDRESS);
+        market = new PoolMarketLegacy(forwarder, TOKEN_ADDRESS);
         factory = new MarketFactory(forwarder, address(market));
         market.setMarketFactory(address(factory));
     }

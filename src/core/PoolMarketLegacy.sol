@@ -8,17 +8,18 @@ import {Errors} from "../utils/Errors.sol";
 
 /// @title PoolMarketLegacy
 /// @notice Optional demo: pool-based prediction market with pro-rata claim.
-/// @dev Uses pool AMM; for ShadowPool path use MarketRegistry + ExecutionLedger.
+/// @dev Uses pool LS-LSMR; for ShadowPool path use MarketRegistry + ExecutionLedger.
 contract PoolMarketLegacy is ReceiverTemplate {
     using SafeERC20 for IERC20;
 
     error MarketDoesNotExist();
     error MarketAlreadySettled();
     error MarketNotSettled();
-    error AlreadyPredicted();
+    error WrongOutcomeToAdd();
     error InvalidAmount();
     error NothingToClaim();
     error AlreadyClaimed();
+    error CannotReduceMoreThanPosition();
     error TransferFailed();
     error UnauthorizedFactory();
     error InvalidMarketType();
@@ -35,6 +36,8 @@ contract PoolMarketLegacy is ReceiverTemplate {
     event MarketSettledTyped(uint256 indexed marketId, uint8 outcomeIndex, uint16 confidence);
     event WinningsClaimed(uint256 indexed marketId, address indexed claimer, uint256 amount);
     event MarketFactoryUpdated(address indexed previousFactory, address indexed newFactory);
+    event PositionReduced(uint256 indexed marketId, address indexed user, uint256 amount);
+    event PositionReducedTyped(uint256 indexed marketId, address indexed user, uint8 outcomeIndex, uint256 amount);
 
     enum Prediction {
         Yes,
@@ -255,10 +258,14 @@ contract PoolMarketLegacy is ReceiverTemplate {
         if (m.settled) revert MarketAlreadySettled();
         if (marketTypeById[marketId] != MarketType.Binary) revert InvalidMarketType();
         if (amount == 0) revert InvalidAmount();
-        UserPrediction memory userPred = predictions[marketId][msg.sender];
-        if (userPred.amount != 0) revert AlreadyPredicted();
+        UserPrediction storage userPred = predictions[marketId][msg.sender];
+        if (userPred.amount != 0) {
+            if (userPred.prediction != prediction) revert WrongOutcomeToAdd();
+        } else {
+            userPred.prediction = prediction;
+        }
 
-        predictions[marketId][msg.sender] = UserPrediction({amount: amount, prediction: prediction, claimed: false});
+        userPred.amount += amount;
         if (prediction == Prediction.Yes) {
             markets[marketId].totalYesPool += amount;
         } else {
@@ -268,14 +275,20 @@ contract PoolMarketLegacy is ReceiverTemplate {
         emit PredictionMade(marketId, msg.sender, prediction, amount);
     }
 
+    /// @notice Buy or add to a typed (categorical/timeline) position. Add to same outcome; must reduce before switching.
     function predictOutcome(uint256 marketId, uint8 outcomeIndex, uint256 amount) external {
         Market memory m = markets[marketId];
         if (m.creator == address(0)) revert MarketDoesNotExist();
         if (m.settled) revert MarketAlreadySettled();
         if (marketTypeById[marketId] == MarketType.Binary) revert InvalidMarketType();
         if (amount == 0) revert InvalidAmount();
-        TypedPrediction memory userPred = typedPredictions[marketId][msg.sender];
-        if (userPred.amount != 0) revert AlreadyPredicted();
+
+        TypedPrediction storage typedPred = typedPredictions[marketId][msg.sender];
+        if (typedPred.amount != 0) {
+            if (typedPred.outcomeIndex != outcomeIndex) revert WrongOutcomeToAdd();
+        } else {
+            typedPred.outcomeIndex = outcomeIndex;
+        }
 
         if (marketTypeById[marketId] == MarketType.Categorical) {
             if (outcomeIndex >= categoricalPools[marketId].length) revert InvalidOutcomeIndex();
@@ -284,13 +297,74 @@ contract PoolMarketLegacy is ReceiverTemplate {
             if (outcomeIndex >= timelinePools[marketId].length) revert InvalidOutcomeIndex();
             timelinePools[marketId][outcomeIndex] += amount;
         }
-        typedPredictions[marketId][msg.sender] = TypedPrediction({
-            amount: amount,
-            outcomeIndex: outcomeIndex,
-            claimed: false
-        });
+        typedPred.amount += amount;
         TOKEN.safeTransferFrom(msg.sender, address(this), amount);
         emit PredictionMadeTyped(marketId, msg.sender, outcomeIndex, amount);
+    }
+
+    /// @notice Reduce binary position. Withdraws tokens 1:1. Use reduceAll to switch outcome.
+    function reducePosition(uint256 marketId, uint256 amount) external {
+        _reducePosition(marketId, amount, msg.sender);
+    }
+
+    /// @notice Reduce typed position. Withdraws tokens 1:1. Use reduceAllTyped to switch outcome.
+    function reducePositionTyped(uint256 marketId, uint256 amount) external {
+        _reducePositionTyped(marketId, amount, msg.sender);
+    }
+
+    /// @notice Reduce entire binary position. Enables switching to another outcome via predict().
+    function reduceAll(uint256 marketId) external {
+        UserPrediction memory userPred = predictions[marketId][msg.sender];
+        if (userPred.amount == 0) revert NothingToClaim();
+        _reducePosition(marketId, userPred.amount, msg.sender);
+    }
+
+    /// @notice Reduce entire typed position. Enables switching to another outcome via predictOutcome().
+    function reduceAllTyped(uint256 marketId) external {
+        TypedPrediction memory typedPred = typedPredictions[marketId][msg.sender];
+        if (typedPred.amount == 0) revert NothingToClaim();
+        _reducePositionTyped(marketId, typedPred.amount, msg.sender);
+    }
+
+    function _reducePosition(uint256 marketId, uint256 amount, address user) internal {
+        Market memory m = markets[marketId];
+        if (m.creator == address(0)) revert MarketDoesNotExist();
+        if (m.settled) revert MarketAlreadySettled();
+        if (marketTypeById[marketId] != MarketType.Binary) revert InvalidMarketType();
+
+        UserPrediction storage userPred = predictions[marketId][user];
+        if (userPred.amount == 0) revert NothingToClaim();
+        if (amount > userPred.amount) revert CannotReduceMoreThanPosition();
+
+        userPred.amount -= amount;
+        if (userPred.prediction == Prediction.Yes) {
+            markets[marketId].totalYesPool -= amount;
+        } else {
+            markets[marketId].totalNoPool -= amount;
+        }
+        TOKEN.safeTransfer(user, amount);
+        emit PositionReduced(marketId, user, amount);
+    }
+
+    function _reducePositionTyped(uint256 marketId, uint256 amount, address user) internal {
+        Market memory m = markets[marketId];
+        if (m.creator == address(0)) revert MarketDoesNotExist();
+        if (m.settled) revert MarketAlreadySettled();
+        if (marketTypeById[marketId] == MarketType.Binary) revert InvalidMarketType();
+
+        TypedPrediction storage typedPred = typedPredictions[marketId][user];
+        if (typedPred.amount == 0) revert NothingToClaim();
+        if (amount > typedPred.amount) revert CannotReduceMoreThanPosition();
+
+        uint8 idx = typedPred.outcomeIndex;
+        typedPred.amount -= amount;
+        if (marketTypeById[marketId] == MarketType.Categorical) {
+            categoricalPools[marketId][idx] -= amount;
+        } else {
+            timelinePools[marketId][idx] -= amount;
+        }
+        TOKEN.safeTransfer(user, amount);
+        emit PositionReducedTyped(marketId, user, idx, amount);
     }
 
     function requestSettlement(uint256 marketId) external {

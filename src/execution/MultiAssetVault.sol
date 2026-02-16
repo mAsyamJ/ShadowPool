@@ -137,6 +137,13 @@ contract MultiAssetVault is IMultiAssetVault, Ownable {
         IERC20(asset).safeTransfer(to, amount);
     }
 
+    /// @notice Transfer asset to any address. For protocol fee, lp fee, creator fee, net PnL. Only ChannelSettlement.
+    function transferAsset(address to, address asset, uint256 amount) external {
+        if (msg.sender != channelSettlement) revert OnlyChannelSettlement();
+        if (to == address(0) || asset == address(0) || amount == 0) return;
+        IERC20(asset).safeTransfer(to, amount);
+    }
+
     function _lockKey(address asset, address user, uint256 marketId, bytes32 sessionId)
         internal
         pure

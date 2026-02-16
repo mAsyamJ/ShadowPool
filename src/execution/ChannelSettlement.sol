@@ -13,6 +13,7 @@ import {IMarketRegistry} from "../interfaces/IMarketRegistry.sol";
 import {Errors} from "../utils/Errors.sol";
 import {FeeManager} from "../fees/FeeManager.sol";
 import {FeePool} from "../fees/FeePool.sol";
+import {ILiquidityVault4626} from "../interfaces/ILiquidityVault4626.sol";
 
 /// @title ChannelSettlement
 /// @notice Checkpoint-based Yellow session settlement with nonce monotonicity and challenge window.
@@ -249,16 +250,59 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
 
         ledger.applyDeltas(marketId, sessionId, deltas);
 
-        (uint256 totalFee, address settlementAsset) =
-            _applyCashDeltasAndFees(marketId, sessionId, deltas);
+        (
+            uint256 protocolFee,
+            uint256 lpFee,
+            uint256 creatorFee,
+            int256 netTraderDelta,
+            address settlementAsset
+        ) = _applyCashDeltasAndFees(marketId, sessionId, deltas);
 
-        if (totalFee > 0 && address(feePool) != address(0) && feePool.feeCollector() == address(this)) {
-            if (address(multiAssetVault) != address(0)) {
-                multiAssetVault.transferToFeeCollector(address(feePool), settlementAsset, totalFee);
-            } else {
-                vault.transferToFeeCollector(address(feePool), totalFee);
+        address lpVault = address(marketRegistry) != address(0)
+            ? marketRegistry.liquidityVaultByMarketId(marketId)
+            : address(0);
+
+        // Net counterparty transfer: LP vault <-> TradingCashLedger
+        if (lpVault != address(0)) {
+            if (netTraderDelta > 0) {
+                ILiquidityVault4626(lpVault).payToTradingLedger(
+                    address(multiAssetVault) != address(0) ? address(multiAssetVault) : address(vault),
+                    uint256(netTraderDelta)
+                );
+            } else if (netTraderDelta < 0) {
+                if (address(multiAssetVault) != address(0)) {
+                    multiAssetVault.transferAsset(lpVault, settlementAsset, uint256(-netTraderDelta));
+                } else {
+                    vault.transferToFeeCollector(lpVault, uint256(-netTraderDelta));
+                }
             }
-            feePool.recordFeeCollected(settlementAsset, totalFee, marketId, sessionId);
+        }
+
+        // Fee routing
+        if (protocolFee > 0 && address(feePool) != address(0) && feePool.feeCollector() == address(this)) {
+            if (address(multiAssetVault) != address(0)) {
+                multiAssetVault.transferAsset(address(feePool), settlementAsset, protocolFee);
+            } else {
+                vault.transferToFeeCollector(address(feePool), protocolFee);
+            }
+            feePool.recordFeeCollected(settlementAsset, protocolFee, marketId, sessionId);
+        }
+        if (lpFee > 0 && address(multiAssetVault) != address(0)) {
+            if (lpVault != address(0) && ILiquidityVault4626(lpVault).totalSupply() > 0) {
+                multiAssetVault.transferAsset(lpVault, settlementAsset, lpFee);
+            } else if (address(feePool) != address(0) && feePool.treasuryPool() != address(0)) {
+                multiAssetVault.transferAsset(feePool.treasuryPool(), settlementAsset, lpFee);
+            }
+        }
+        if (creatorFee > 0 && address(marketRegistry) != address(0)) {
+            address creator = marketRegistry.getCreator(marketId);
+            if (creator != address(0)) {
+                if (address(multiAssetVault) != address(0)) {
+                    multiAssetVault.transferAsset(creator, settlementAsset, creatorFee);
+                } else {
+                    vault.transferToFeeCollector(creator, creatorFee);
+                }
+            }
         }
 
         latestNonceByKey[k] = p.nonce;
@@ -271,7 +315,16 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         uint256 marketId,
         bytes32 sessionId,
         ShadowTypes.Delta[] calldata deltas
-    ) internal returns (uint256 totalFee, address settlementAsset) {
+    )
+        internal
+        returns (
+            uint256 protocolFee,
+            uint256 lpFee,
+            uint256 creatorFee,
+            int256 netTraderDelta,
+            address settlementAsset
+        )
+    {
         settlementAsset = address(multiAssetVault) != address(0) && address(marketRegistry) != address(0)
             ? marketRegistry.getSettlementAsset(marketId)
             : vault.token();
@@ -279,6 +332,7 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         address[] memory users = new address[](deltas.length);
         int128[] memory cashDeltas = new int128[](deltas.length);
         uint256 count = 0;
+        netTraderDelta = 0;
 
         for (uint256 i = 0; i < deltas.length; i++) {
             int128 delta = deltas[i].cashDelta;
@@ -286,12 +340,13 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
 
             int128 netDelta = delta;
             if (address(feeManager) != address(0) && delta > 0) {
-                (uint256 fee,) = feeManager.computeFee(delta);
-                if (fee > 0) {
-                    totalFee += fee;
-                    netDelta = delta - int128(int256(fee));
-                }
+                (uint256 pf, uint256 lf, uint256 cf, int128 nd) = feeManager.computeSplit(delta);
+                protocolFee += pf;
+                lpFee += lf;
+                creatorFee += cf;
+                netDelta = nd;
             }
+            netTraderDelta += netDelta;
             users[count] = deltas[i].user;
             cashDeltas[count] = netDelta;
             count++;
