@@ -3,11 +3,15 @@ pragma solidity 0.8.24;
 
 import {ReceiverTemplate} from "../interfaces/ReceiverTemplate.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {Errors} from "../utils/Errors.sol";
 
-/// @title LegacyPoolMarket
+/// @title PoolMarketLegacy
 /// @notice Optional demo: pool-based prediction market with pro-rata claim.
 /// @dev Uses pool AMM; for ShadowPool path use MarketRegistry + ExecutionLedger.
-contract LegacyPoolMarket is ReceiverTemplate {
+contract PoolMarketLegacy is ReceiverTemplate {
+    using SafeERC20 for IERC20;
+
     error MarketDoesNotExist();
     error MarketAlreadySettled();
     error MarketNotSettled();
@@ -80,10 +84,9 @@ contract LegacyPoolMarket is ReceiverTemplate {
     address public marketFactory;
     IERC20 public immutable TOKEN;
 
-    address public constant TOKEN_ADDRESS = 0x3600000000000000000000000000000000000000;
-
-    constructor(address _forwarderAddress) ReceiverTemplate(_forwarderAddress) {
-        TOKEN = IERC20(TOKEN_ADDRESS);
+    constructor(address _forwarderAddress, address tokenAddress) ReceiverTemplate(_forwarderAddress) {
+        if (tokenAddress == address(0)) revert Errors.InvalidAddress();
+        TOKEN = IERC20(tokenAddress);
     }
 
     function setMarketFactory(address factory) external onlyOwner {
@@ -111,6 +114,21 @@ contract LegacyPoolMarket is ReceiverTemplate {
 
     function createMarketFor(string memory question, address requestedBy) external returns (uint256 marketId) {
         if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        marketId = _doCreateMarketFor(question, requestedBy);
+        emit MarketCreated(marketId, question, requestedBy);
+    }
+
+    /// @notice Create market with expiry (IPredictionMarket). expiry ignored for pool-based markets.
+    function createMarketForWithExpiry(string memory question, address requestedBy, uint48 /* expiry */)
+        external
+        returns (uint256 marketId)
+    {
+        if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        marketId = _doCreateMarketFor(question, requestedBy);
+        emit MarketCreated(marketId, question, requestedBy);
+    }
+
+    function _doCreateMarketFor(string memory question, address requestedBy) internal returns (uint256 marketId) {
         marketId = nextMarketId++;
         marketTypeById[marketId] = MarketType.Binary;
         markets[marketId] = Market({
@@ -124,7 +142,6 @@ contract LegacyPoolMarket is ReceiverTemplate {
             totalNoPool: 0,
             question: question
         });
-        emit MarketCreated(marketId, question, requestedBy);
     }
 
     function createCategoricalMarket(string memory question, string[] memory outcomes) external returns (uint256 marketId) {
@@ -140,6 +157,24 @@ contract LegacyPoolMarket is ReceiverTemplate {
         address requestedBy
     ) external returns (uint256 marketId) {
         if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        marketId = _doCreateCategoricalMarketFor(question, outcomes, requestedBy);
+    }
+
+    function createCategoricalMarketForWithExpiry(
+        string memory question,
+        string[] memory outcomes,
+        address requestedBy,
+        uint48 /* expiry */
+    ) external returns (uint256 marketId) {
+        if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        marketId = _doCreateCategoricalMarketFor(question, outcomes, requestedBy);
+    }
+
+    function _doCreateCategoricalMarketFor(
+        string memory question,
+        string[] memory outcomes,
+        address requestedBy
+    ) internal returns (uint256 marketId) {
         marketId = nextMarketId++;
         _initTypedMarket(marketId, question, requestedBy, MarketType.Categorical, outcomes.length);
         categoricalOutcomes[marketId] = outcomes;
@@ -158,6 +193,24 @@ contract LegacyPoolMarket is ReceiverTemplate {
         address requestedBy
     ) external returns (uint256 marketId) {
         if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        marketId = _doCreateTimelineMarketFor(question, windows, requestedBy);
+    }
+
+    function createTimelineMarketForWithExpiry(
+        string memory question,
+        uint48[] memory windows,
+        address requestedBy,
+        uint48 /* expiry */
+    ) external returns (uint256 marketId) {
+        if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        marketId = _doCreateTimelineMarketFor(question, windows, requestedBy);
+    }
+
+    function _doCreateTimelineMarketFor(
+        string memory question,
+        uint48[] memory windows,
+        address requestedBy
+    ) internal returns (uint256 marketId) {
         marketId = nextMarketId++;
         _initTypedMarket(marketId, question, requestedBy, MarketType.Timeline, windows.length);
         _storeTimelineWindows(marketId, windows);
@@ -211,7 +264,7 @@ contract LegacyPoolMarket is ReceiverTemplate {
         } else {
             markets[marketId].totalNoPool += amount;
         }
-        if (!TOKEN.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
+        TOKEN.safeTransferFrom(msg.sender, address(this), amount);
         emit PredictionMade(marketId, msg.sender, prediction, amount);
     }
 
@@ -236,7 +289,7 @@ contract LegacyPoolMarket is ReceiverTemplate {
             outcomeIndex: outcomeIndex,
             claimed: false
         });
-        if (!TOKEN.transferFrom(msg.sender, address(this), amount)) revert TransferFailed();
+        TOKEN.safeTransferFrom(msg.sender, address(this), amount);
         emit PredictionMadeTyped(marketId, msg.sender, outcomeIndex, amount);
     }
 
@@ -299,7 +352,7 @@ contract LegacyPoolMarket is ReceiverTemplate {
             uint256 winningPoolBinary = m.outcome == Prediction.Yes ? m.totalYesPool : m.totalNoPool;
             if (winningPoolBinary == 0) revert NothingToClaim();
             uint256 payoutBinary = (userPred.amount * totalPoolBinary) / winningPoolBinary;
-            if (!TOKEN.transfer(msg.sender, payoutBinary)) revert TransferFailed();
+            TOKEN.safeTransfer(msg.sender, payoutBinary);
             emit WinningsClaimed(marketId, msg.sender, payoutBinary);
             return;
         }
@@ -325,7 +378,7 @@ contract LegacyPoolMarket is ReceiverTemplate {
         }
         if (winningPoolTyped == 0) revert NothingToClaim();
         uint256 payoutTyped = (typedPred.amount * totalPoolTyped) / winningPoolTyped;
-        if (!TOKEN.transfer(msg.sender, payoutTyped)) revert TransferFailed();
+        TOKEN.safeTransfer(msg.sender, payoutTyped);
         emit WinningsClaimed(marketId, msg.sender, payoutTyped);
     }
 

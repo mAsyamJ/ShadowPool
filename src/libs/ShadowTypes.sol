@@ -11,6 +11,7 @@ library ShadowTypes {
         uint64 nonce;
         uint64 validAfter;
         uint64 validBefore;
+        uint48 lastTradeAt;  // Freeze boundary: must be <= market.tradingClose
         bytes32 stateHash;
         bytes32 deltasHash;
         bytes32 riskHash;

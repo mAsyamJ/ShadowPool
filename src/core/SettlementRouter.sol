@@ -21,6 +21,10 @@ contract SettlementRouter is ISettlementRouter, Ownable2Step {
     address public sessionFinalizer;
     address public channelSettlement;
 
+    /// @notice When non-empty, only approved market receivers can be settled. Set all to false to disable.
+    mapping(address => bool) public approvedMarketReceivers;
+    bool public useReceiverAllowlist;
+
     event OracleCoordinatorUpdated(address indexed previous, address indexed current);
     event SessionFinalizerUpdated(address indexed previous, address indexed current);
     event ChannelSettlementUpdated(address indexed previous, address indexed current);
@@ -70,6 +74,7 @@ contract SettlementRouter is ISettlementRouter, Ownable2Step {
         override
         onlyOracleCoordinator
     {
+        if (useReceiverAllowlist && !approvedMarketReceivers[market]) revert Errors.Unauthorized();
         // create the report for the market
         bytes memory report = bytes.concat(bytes1(0x01), abi.encode(marketId, outcomeIndex, confidence));
         // forward the report to the prediction market
@@ -83,6 +88,16 @@ contract SettlementRouter is ISettlementRouter, Ownable2Step {
         address previous = channelSettlement;
         channelSettlement = cs;
         emit ChannelSettlementUpdated(previous, cs);
+    }
+
+    /// @notice Set whether to enforce the receiver allowlist.
+    function setUseReceiverAllowlist(bool use) external onlyOwner {
+        useReceiverAllowlist = use;
+    }
+
+    /// @notice Approve or revoke a market receiver for settlement.
+    function setMarketReceiverApproved(address receiver, bool approved) external onlyOwner {
+        approvedMarketReceivers[receiver] = approved;
     }
 
     /// @notice Finalize the session: checkpoint path (ChannelSettlement) or legacy (SessionFinalizer).

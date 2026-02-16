@@ -17,13 +17,12 @@ contract MarketTypesTest is Test {
 
     function setUp() public {
         vm.warp(1000);
-        market = new PredictionMarket(forwarder);
-        factory = new MarketFactory(forwarder, address(market));
-        market.setMarketFactory(address(factory));
-
         ERC20Mock deployed = new ERC20Mock();
         vm.etch(TOKEN_ADDRESS, address(deployed).code);
         token = ERC20Mock(TOKEN_ADDRESS);
+        market = new PredictionMarket(forwarder, TOKEN_ADDRESS);
+        factory = new MarketFactory(forwarder, address(market));
+        market.setMarketFactory(address(factory));
     }
 
     function testCategoricalMarketCreation() public {

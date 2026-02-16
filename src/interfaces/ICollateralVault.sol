@@ -23,4 +23,7 @@ interface ICollateralVault {
         address[] calldata users,
         int128[] calldata cashDeltas
     ) external;
+
+    /// @notice Transfer tokens to fee collector; only ChannelSettlement.
+    function transferToFeeCollector(address to, uint256 amount) external;
 }

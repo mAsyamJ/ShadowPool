@@ -2,12 +2,13 @@
 pragma solidity 0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ITreasury} from "../interfaces/ITreasury.sol";
 import {Errors} from "../utils/Errors.sol";
 
 /// @title Treasury
 /// @notice ERC20 escrow for market payouts (additive module).
-contract Treasury is ITreasury {
+contract Treasury is ITreasury, Ownable {
     IERC20 public immutable TOKEN;
     mapping(address => bool) public approvedMarkets;
     mapping(address => uint256) public marketEscrow;
@@ -16,12 +17,12 @@ contract Treasury is ITreasury {
     event Collected(address indexed market, address indexed from, uint256 amount);
     event Paid(address indexed market, address indexed to, uint256 amount);
 
-    constructor(address tokenAddress) {
+    constructor(address tokenAddress) Ownable(msg.sender) {
         if (tokenAddress == address(0)) revert Errors.InvalidAddress();
         TOKEN = IERC20(tokenAddress);
     }
 
-    function setMarketApproved(address market, bool approved) external {
+    function setMarketApproved(address market, bool approved) external onlyOwner {
         approvedMarkets[market] = approved;
         emit MarketApproved(market, approved);
     }

@@ -3,11 +3,12 @@ pragma solidity 0.8.24;
 
 import {ReceiverTemplate} from "../interfaces/ReceiverTemplate.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {Errors} from "../utils/Errors.sol";
 
 /// @title PredictionMarket
 /// @notice A simplified Prediction Market contract for CRE.
-/// @dev This contract hold markets, user positions, and pools, and pays out winners.
-///      It also serves as a CRE receiver for a subset of workflows.
+/// @dev DEPRECATED: Use PoolMarketLegacy for pool-based demo. This contract holds markets,
+///      user positions, and pools, and pays out winners. It also serves as a CRE receiver.
 contract PredictionMarket is ReceiverTemplate {
 
     // errors for market operations
@@ -85,14 +86,12 @@ contract PredictionMarket is ReceiverTemplate {
     address public marketFactory;
     IERC20 public immutable TOKEN;
 
-    /// @notice ERC-20 token used for predictions and payouts.
-    address public constant TOKEN_ADDRESS = 0x3600000000000000000000000000000000000000; // Change to USDC Sepolia from GHO for testnet
-
-    /// @notice Constructor sets the Chainlink Forwarder address for security
+    /// @notice Constructor sets the Chainlink Forwarder address and collateral token.
     /// @param _forwarderAddress The address of the Chainlink KeystoneForwarder contract
-    /// @dev For Sepolia testnet, use: 0x15fc6ae953e024d975e77382eeec56a9101f9f88
-    constructor(address _forwarderAddress) ReceiverTemplate(_forwarderAddress) {
-        TOKEN = IERC20(TOKEN_ADDRESS);
+    /// @param tokenAddress The ERC-20 token address for predictions and payouts
+    constructor(address _forwarderAddress, address tokenAddress) ReceiverTemplate(_forwarderAddress) {
+        if (tokenAddress == address(0)) revert Errors.InvalidAddress();
+        TOKEN = IERC20(tokenAddress);
     }
 
     /// @notice Set the MarketFactory address allowed to create markets on behalf of users.
@@ -132,9 +131,22 @@ contract PredictionMarket is ReceiverTemplate {
     /// @dev Reverts if caller is not the configured MarketFactory.
     function createMarketFor(string memory question, address requestedBy) external returns (uint256 marketId) {
         if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        marketId = _doCreateMarketFor(question, requestedBy);
+        emit MarketCreated(marketId, question, requestedBy);
+    }
 
+    /// @notice Create a market with expiry (IPredictionMarket). expiry ignored for pool-based markets.
+    function createMarketForWithExpiry(string memory question, address requestedBy, uint48 /* expiry */)
+        external
+        returns (uint256 marketId)
+    {
+        if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        marketId = _doCreateMarketFor(question, requestedBy);
+        emit MarketCreated(marketId, question, requestedBy);
+    }
+
+    function _doCreateMarketFor(string memory question, address requestedBy) internal returns (uint256 marketId) {
         marketId = nextMarketId++;
-
         marketTypeById[marketId] = MarketType.Binary;
         markets[marketId] = Market({
             creator: requestedBy,
@@ -147,8 +159,6 @@ contract PredictionMarket is ReceiverTemplate {
             totalNoPool: 0,
             question: question
         });
-
-        emit MarketCreated(marketId, question, requestedBy);
     }
 
     /// @notice Create a categorical market with multiple outcomes.
@@ -166,13 +176,28 @@ contract PredictionMarket is ReceiverTemplate {
         address requestedBy
     ) external returns (uint256 marketId) {
         if (msg.sender != marketFactory) revert UnauthorizedFactory();
-        // create the market
+        marketId = _doCreateCategoricalMarketFor(question, outcomes, requestedBy);
+    }
+
+    /// @notice Create categorical market with expiry (IPredictionMarket). expiry ignored for pool-based markets.
+    function createCategoricalMarketForWithExpiry(
+        string memory question,
+        string[] memory outcomes,
+        address requestedBy,
+        uint48 /* expiry */
+    ) external returns (uint256 marketId) {
+        if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        marketId = _doCreateCategoricalMarketFor(question, outcomes, requestedBy);
+    }
+
+    function _doCreateCategoricalMarketFor(
+        string memory question,
+        string[] memory outcomes,
+        address requestedBy
+    ) internal returns (uint256 marketId) {
         marketId = nextMarketId++;
-        // initialize the market
         _initTypedMarket(marketId, question, requestedBy, MarketType.Categorical, outcomes.length);
-        // store the outcomes
         categoricalOutcomes[marketId] = outcomes;
-        // initialize the pools
         categoricalPools[marketId] = new uint256[](outcomes.length);
     }
 
@@ -190,10 +215,27 @@ contract PredictionMarket is ReceiverTemplate {
         address requestedBy
     ) external returns (uint256 marketId) {
         if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        marketId = _doCreateTimelineMarketFor(question, windows, requestedBy);
+    }
+
+    /// @notice Create timeline market with expiry (IPredictionMarket). expiry ignored for pool-based markets.
+    function createTimelineMarketForWithExpiry(
+        string memory question,
+        uint48[] memory windows,
+        address requestedBy,
+        uint48 /* expiry */
+    ) external returns (uint256 marketId) {
+        if (msg.sender != marketFactory) revert UnauthorizedFactory();
+        marketId = _doCreateTimelineMarketFor(question, windows, requestedBy);
+    }
+
+    function _doCreateTimelineMarketFor(
+        string memory question,
+        uint48[] memory windows,
+        address requestedBy
+    ) internal returns (uint256 marketId) {
         marketId = nextMarketId++;
-        // initialize the market
         _initTypedMarket(marketId, question, requestedBy, MarketType.Timeline, windows.length);
-        // store the windows
         _storeTimelineWindows(marketId, windows);
     }
 

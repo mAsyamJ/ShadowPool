@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ICollateralVault} from "../interfaces/ICollateralVault.sol";
 import {Errors} from "../utils/Errors.sol";
@@ -9,6 +10,8 @@ import {Errors} from "../utils/Errors.sol";
 /// @title CollateralVault
 /// @notice Single custody point for ShadowPool: deposit/withdraw, lock/unlock per session.
 contract CollateralVault is ICollateralVault, Ownable {
+    using SafeERC20 for IERC20;
+
     function token() external view override returns (address) {
         return address(tokenContract);
     }
@@ -19,7 +22,6 @@ contract CollateralVault is ICollateralVault, Ownable {
 
     mapping(address => uint256) private _freeBalance;
     mapping(bytes32 => uint256) private _lockedBalance; // keccak256(user, marketId, sessionId) => amount
-    uint256 private _feesReserve;
 
     event Deposited(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount);
@@ -42,11 +44,10 @@ contract CollateralVault is ICollateralVault, Ownable {
     }
 
     function setMarketRegistry(address marketRegistry_) external onlyOwner {
-        if (marketRegistry_ != address(0)) {
-            address previous = marketRegistry;
-            marketRegistry = marketRegistry_;
-            emit MarketRegistryUpdated(previous, marketRegistry_);
-        }
+        if (marketRegistry_ == address(0)) revert Errors.InvalidAddress();
+        address previous = marketRegistry;
+        marketRegistry = marketRegistry_;
+        emit MarketRegistryUpdated(previous, marketRegistry_);
     }
 
     function setChannelSettlement(address channelSettlement_) external onlyOwner {
@@ -59,7 +60,7 @@ contract CollateralVault is ICollateralVault, Ownable {
     function deposit(uint256 amount) external override {
         if (amount == 0) revert Errors.InvalidAmount();
         _freeBalance[msg.sender] += amount;
-        if (!tokenContract.transferFrom(msg.sender, address(this), amount)) revert Errors.InvalidAmount();
+        tokenContract.safeTransferFrom(msg.sender, address(this), amount);
         emit Deposited(msg.sender, amount);
     }
 
@@ -67,7 +68,7 @@ contract CollateralVault is ICollateralVault, Ownable {
         if (amount == 0) revert Errors.InvalidAmount();
         if (_freeBalance[msg.sender] < amount) revert InsufficientFreeBalance();
         _freeBalance[msg.sender] -= amount;
-        if (!tokenContract.transfer(msg.sender, amount)) revert Errors.InvalidAmount();
+        tokenContract.safeTransfer(msg.sender, amount);
         emit Withdrawn(msg.sender, amount);
     }
 
@@ -130,7 +131,14 @@ contract CollateralVault is ICollateralVault, Ownable {
     function redeemPayout(address to, uint256 amount) external override {
         if (msg.sender != marketRegistry) revert OnlyMarketRegistry();
         if (amount == 0) revert Errors.InvalidAmount();
-        if (!tokenContract.transfer(to, amount)) revert Errors.InvalidAmount();
+        tokenContract.safeTransfer(to, amount);
+    }
+
+    /// @notice Transfer tokens to fee collector (e.g. FeePool); only ChannelSettlement.
+    function transferToFeeCollector(address to, uint256 amount) external {
+        if (msg.sender != channelSettlement) revert OnlyChannelSettlement();
+        if (to == address(0) || amount == 0) return;
+        tokenContract.safeTransfer(to, amount);
     }
 
     function _lockKey(address user, uint256 marketId, bytes32 sessionId) internal pure returns (bytes32) {

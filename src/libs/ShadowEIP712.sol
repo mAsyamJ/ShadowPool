@@ -11,7 +11,7 @@ abstract contract ShadowEIP712 is EIP712 {
     using ECDSA for bytes32;
 
     bytes32 internal constant CHECKPOINT_TYPEHASH =
-        keccak256("Checkpoint(uint256 marketId,bytes32 sessionId,uint64 nonce,uint64 validAfter,uint64 validBefore,bytes32 stateHash,bytes32 deltasHash,bytes32 riskHash)");
+        keccak256("Checkpoint(uint256 marketId,bytes32 sessionId,uint64 nonce,uint64 validAfter,uint64 validBefore,uint48 lastTradeAt,bytes32 stateHash,bytes32 deltasHash,bytes32 riskHash)");
 
     bytes32 internal constant DELTA_TYPEHASH =
         keccak256("Delta(address user,uint32 outcomeIndex,int128 sharesDelta,int128 cashDelta)");
@@ -41,6 +41,7 @@ abstract contract ShadowEIP712 is EIP712 {
                 cp.nonce,
                 cp.validAfter,
                 cp.validBefore,
+                cp.lastTradeAt,
                 cp.stateHash,
                 cp.deltasHash,
                 cp.riskHash

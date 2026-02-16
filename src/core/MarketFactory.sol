@@ -4,6 +4,7 @@ pragma solidity 0.8.24;
 import {ReceiverTemplate} from "../interfaces/ReceiverTemplate.sol";
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
+import {MarketDraftBoard} from "../curation/MarketDraftBoard.sol";
 
 /// @notice Interface for the prediction market.
 interface IPredictionMarket {
@@ -24,6 +25,26 @@ interface IPredictionMarket {
     /// @param requestedBy The address of the requested by.
     /// @return The ID of the newly created market.
     function createTimelineMarketFor(string memory question, uint48[] memory windows, address requestedBy) external returns (uint256);
+
+    /// @notice Create a market with expiry (whitepaper Texpiry). expiry=0 means no expiry enforced.
+    function createMarketForWithExpiry(string memory question, address requestedBy, uint48 expiry) external returns (uint256);
+    function createCategoricalMarketForWithExpiry(string memory question, string[] memory outcomes, address requestedBy, uint48 expiry)
+        external
+        returns (uint256);
+    function createTimelineMarketForWithExpiry(string memory question, uint48[] memory windows, address requestedBy, uint48 expiry)
+        external
+        returns (uint256);
+}
+
+/// @notice Interface for MarketRegistry create methods (curated path).
+interface IMarketRegistryCreate {
+    function createMarketForWithExpiry(string memory question, address requestedBy, uint48 expiry) external returns (uint256);
+    function createCategoricalMarketForWithExpiry(string memory question, string[] memory outcomes, address requestedBy, uint48 expiry)
+        external
+        returns (uint256);
+    function createTimelineMarketForWithExpiry(string memory question, uint48[] memory windows, address requestedBy, uint48 expiry)
+        external
+        returns (uint256);
 }
 
 /// @title MarketFactory
@@ -42,6 +63,8 @@ contract MarketFactory is ReceiverTemplate {
     error InvalidMarketType();
     error InvalidOutcomeCount();
     error InvalidTimelineWindows();
+    error UnauthorizedPublishReceiver();
+    error CuratedPathNotConfigured();
 
     /// @notice Events for market operations.
     event MarketSpawned(
@@ -128,9 +151,25 @@ contract MarketFactory is ReceiverTemplate {
         uint8 outcomesCount;
     }
 
+    /// @notice Struct for publish-from-draft params (curated path).
+    struct DraftPublishParams {
+        string question;
+        uint8 marketType;
+        string[] outcomes;
+        uint48[] timelineWindows;
+        uint48 resolveTime;
+        uint48 tradingOpen;
+        uint48 tradingClose;
+    }
+
     IPredictionMarket public immutable PREDICTION_MARKET;
     uint256 public minQuestionLength = 10;
     uint256 public maxQuestionLength = 200;
+
+    IMarketRegistryCreate public marketRegistry;
+    MarketDraftBoard public draftBoard;
+    mapping(address => bool) public approvedPublishReceivers;
+    mapping(uint256 => bytes32) public draftIdByMarketId;
 
     /// @notice Mapping for used external IDs.
     mapping(bytes32 => bool) public usedExternalIds;
@@ -153,6 +192,62 @@ contract MarketFactory is ReceiverTemplate {
     function setQuestionBounds(uint256 minLength, uint256 maxLength) external onlyOwner {
         minQuestionLength = minLength;
         maxQuestionLength = maxLength;
+    }
+
+    /// @notice Set MarketRegistry for curated createFromDraft path.
+    function setMarketRegistry(address registry) external onlyOwner {
+        marketRegistry = IMarketRegistryCreate(registry);
+    }
+
+    /// @notice Set MarketDraftBoard for curated createFromDraft path.
+    function setDraftBoard(address board) external onlyOwner {
+        draftBoard = MarketDraftBoard(board);
+    }
+
+    /// @notice Approve or revoke a publish receiver (e.g. CREPublishReceiver).
+    function setPublishReceiverApproved(address receiver, bool approved) external onlyOwner {
+        approvedPublishReceivers[receiver] = approved;
+    }
+
+    /// @notice Create market from claimed draft. Only approved publish receivers.
+    function createFromDraft(
+        bytes32 draftId,
+        address creator,
+        DraftPublishParams calldata params
+    ) external returns (uint256 marketId) {
+        if (!approvedPublishReceivers[msg.sender]) revert UnauthorizedPublishReceiver();
+        if (address(marketRegistry) == address(0)) revert CuratedPathNotConfigured();
+        if (address(draftBoard) == address(0)) revert CuratedPathNotConfigured();
+
+        uint48 expiry = params.resolveTime;
+
+        if (params.marketType == MARKET_TYPE_BINARY) {
+            marketId = marketRegistry.createMarketForWithExpiry(params.question, creator, expiry);
+        } else if (params.marketType == MARKET_TYPE_CATEGORICAL) {
+            if (params.outcomes.length < 2) revert InvalidOutcomeCount();
+            marketId = marketRegistry.createCategoricalMarketForWithExpiry(
+                params.question,
+                params.outcomes,
+                creator,
+                expiry
+            );
+        } else if (params.marketType == MARKET_TYPE_TIMELINE) {
+            if (params.timelineWindows.length < 2) revert InvalidOutcomeCount();
+            for (uint256 i = 1; i < params.timelineWindows.length; i++) {
+                if (params.timelineWindows[i] <= params.timelineWindows[i - 1]) revert InvalidTimelineWindows();
+            }
+            marketId = marketRegistry.createTimelineMarketForWithExpiry(
+                params.question,
+                params.timelineWindows,
+                creator,
+                expiry
+            );
+        } else {
+            revert InvalidMarketType();
+        }
+
+        draftBoard.markPublished(draftId, marketId);
+        draftIdByMarketId[marketId] = draftId;
     }
 
     /// @notice Process the report from the CRE.
@@ -203,8 +298,9 @@ contract MarketFactory is ReceiverTemplate {
         _validateInput(input);
         usedExternalIds[input.externalId] = true;
 
-        // create the binary market
-        uint256 marketId = PREDICTION_MARKET.createMarketFor(input.question, input.requestedBy);
+        // create the binary market (pass resolveTime as expiry for MarketRegistry compatibility)
+        uint256 marketId =
+            PREDICTION_MARKET.createMarketForWithExpiry(input.question, input.requestedBy, input.resolveTime);
         // store the market metadata
         marketMetadata[marketId] = MarketMetadata({
             requestedBy: input.requestedBy,
@@ -311,17 +407,22 @@ contract MarketFactory is ReceiverTemplate {
     /// @param input The input for a typed market.
     /// @return The ID of the newly created market.
     function _createTypedMarket(MarketInputV2 memory input) internal returns (uint256) {
+        uint48 expiry = input.resolveTime;
         // check if the market is binary
         if (input.marketType == MARKET_TYPE_BINARY) {
-            return PREDICTION_MARKET.createMarketFor(input.question, input.requestedBy);
+            return PREDICTION_MARKET.createMarketForWithExpiry(input.question, input.requestedBy, expiry);
         }
         // check if the market is categorical
         if (input.marketType == MARKET_TYPE_CATEGORICAL) {
-            return PREDICTION_MARKET.createCategoricalMarketFor(input.question, input.outcomes, input.requestedBy);
+            return PREDICTION_MARKET.createCategoricalMarketForWithExpiry(
+                input.question, input.outcomes, input.requestedBy, expiry
+            );
         }
         // check if the market is timeline
         if (input.marketType == MARKET_TYPE_TIMELINE) {
-            return PREDICTION_MARKET.createTimelineMarketFor(input.question, input.timelineWindows, input.requestedBy);
+            return PREDICTION_MARKET.createTimelineMarketForWithExpiry(
+                input.question, input.timelineWindows, input.requestedBy, expiry
+            );
         }
         revert InvalidMarketType();
     }
