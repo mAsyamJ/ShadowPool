@@ -7,6 +7,7 @@ import {ISettlementRouter} from "../interfaces/ISettlementRouter.sol";
 import {ISessionFinalizer} from "../interfaces/ISessionFinalizer.sol";
 import {IChannelSettlement} from "../interfaces/IChannelSettlement.sol";
 import {Errors} from "../utils/Errors.sol";
+import {ShadowTypes} from "../libs/ShadowTypes.sol";
 
 interface IPredictionMarketReceiver {
     function onReport(bytes calldata metadata, bytes calldata report) external;
@@ -29,6 +30,13 @@ contract SettlementRouter is ISettlementRouter, Ownable2Step {
     event SessionFinalizerUpdated(address indexed previous, address indexed current);
     event ChannelSettlementUpdated(address indexed previous, address indexed current);
     event MarketSettled(address indexed market, uint256 marketId, uint8 outcomeIndex, uint16 confidence);
+    event SessionPayloadRouted(
+        address indexed target,
+        bytes32 indexed payloadHash,
+        uint256 indexed marketId,
+        bytes32 sessionId,
+        uint8 routeType
+    );
 
     modifier onlyOracleCoordinator() {
         _onlyOracleCoordinator();
@@ -103,13 +111,34 @@ contract SettlementRouter is ISettlementRouter, Ownable2Step {
     /// @notice Finalize the session: checkpoint path (ChannelSettlement) or legacy (SessionFinalizer).
     /// @param payload For checkpoint path: abi.encode(cp, deltas, operatorSig, users, userSigs).
     function finalizeSession(bytes calldata payload) external override onlyOracleCoordinator {
+        bytes32 payloadHash = keccak256(payload);
         if (channelSettlement != address(0)) {
+            (
+                ShadowTypes.Checkpoint memory cp,
+                ,
+                ,
+                ,
+
+            ) = abi.decode(payload, (ShadowTypes.Checkpoint, ShadowTypes.Delta[], bytes, address[], bytes[]));
             IChannelSettlement(channelSettlement).submitCheckpointFromPayload(payload);
+            emit SessionPayloadRouted(
+                channelSettlement,
+                payloadHash,
+                cp.marketId,
+                cp.sessionId,
+                1
+            );
         } else if (sessionFinalizer != address(0)) {
             ISessionFinalizer(sessionFinalizer).finalizeSession(payload);
+            emit SessionPayloadRouted(
+                sessionFinalizer,
+                payloadHash,
+                0,
+                bytes32(0),
+                0
+            );
         } else {
             revert Errors.InvalidAddress();
         }
-        emit MarketSettled(address(0), 0, 0, 0);
     }
 }

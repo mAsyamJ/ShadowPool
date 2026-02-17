@@ -35,7 +35,8 @@ contract MarketPolicy is Ownable {
     error SeedTooLow();
 
     constructor() Ownable(msg.sender) {
-        allowedMarketTypes = (1 << MARKET_TYPE_BINARY) | (1 << MARKET_TYPE_CATEGORICAL) | (1 << MARKET_TYPE_TIMELINE);
+        allowedMarketTypes =
+            (uint256(1) << MARKET_TYPE_BINARY) | (uint256(1) << MARKET_TYPE_CATEGORICAL) | (uint256(1) << MARKET_TYPE_TIMELINE);
         maxOutcomes = 64;
         maxDuration = 365 days;
     }
@@ -97,7 +98,7 @@ contract MarketPolicy is Ownable {
     function _validateDraft(MarketDraftBoard.Draft memory draft) internal view {
         uint8 mt = uint8(draft.marketType);
         if (mt > MARKET_TYPE_TIMELINE) revert InvalidMarketType();
-        if ((allowedMarketTypes & (1 << mt)) == 0) revert InvalidMarketType();
+        if ((allowedMarketTypes & (uint256(1) << mt)) == 0) revert InvalidMarketType();
 
         if (minCreatorSeed != 0 && draft.minSeed < minCreatorSeed) revert SeedTooLow();
 

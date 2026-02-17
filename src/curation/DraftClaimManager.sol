@@ -16,12 +16,17 @@ contract DraftClaimManager is EIP712, Ownable {
     using ECDSA for bytes32;
     using SafeERC20 for IERC20;
 
+    enum ClaimType {
+        LEGACY,
+        SEEDED
+    }
+
     bytes32 public constant CLAIM_DRAFT_TYPEHASH =
         keccak256("ClaimDraft(bytes32 draftId,uint256 bond,bytes32 seedCommitment,uint256 expiry,uint256 nonce)");
     bytes32 public constant CLAIM_AND_SEED_TYPEHASH =
         keccak256("ClaimAndSeed(bytes32 draftId,address asset,uint256 seedAmount,uint256 deadline,uint256 nonce)");
 
-    MarketDraftBoard public immutable draftBoard;
+    MarketDraftBoard public immutable DRAFT_BOARD;
     LiquidityVaultFactory public liquidityVaultFactory;
 
     mapping(bytes32 => Claim) public claims;
@@ -30,6 +35,7 @@ contract DraftClaimManager is EIP712, Ownable {
     mapping(bytes32 => uint256) public seedSharesLocked;
     mapping(bytes32 => uint48) public seedUnlockTime;
     mapping(bytes32 => address) public liquidityVaultByDraftId;
+    mapping(bytes32 => ClaimType) public claimTypeByDraftId;
 
     struct Claim {
         address claimer;
@@ -63,7 +69,7 @@ contract DraftClaimManager is EIP712, Ownable {
     error UnlockTimeNotReached();
 
     constructor(address draftBoard_) EIP712("DraftClaimManager", "1") Ownable(msg.sender) {
-        draftBoard = MarketDraftBoard(draftBoard_);
+        DRAFT_BOARD = MarketDraftBoard(draftBoard_);
     }
 
     function setLiquidityVaultFactory(address factory) external onlyOwner {
@@ -79,23 +85,21 @@ contract DraftClaimManager is EIP712, Ownable {
         uint256 deadline,
         bytes calldata sig
     ) external {
-        if (draftBoard.getStatus(draftId) != MarketDraftBoard.DraftStatus.Proposed) {
-            if (draftBoard.getStatus(draftId) == MarketDraftBoard.DraftStatus.Claimed) revert DraftNotProposed();
+        if (DRAFT_BOARD.getStatus(draftId) != MarketDraftBoard.DraftStatus.Proposed) {
+            if (DRAFT_BOARD.getStatus(draftId) == MarketDraftBoard.DraftStatus.Claimed) revert DraftNotProposed();
             revert DraftDoesNotExist();
         }
         if (deadline != 0 && block.timestamp > deadline) revert ClaimExpired();
         if (address(liquidityVaultFactory) == address(0)) revert VaultFactoryNotSet();
 
-        MarketDraftBoard.Draft memory d = draftBoard.getDraft(draftId);
+        MarketDraftBoard.Draft memory d = DRAFT_BOARD.getDraft(draftId);
         address settlementAsset = d.settlementAsset != address(0) ? d.settlementAsset : asset;
         if (asset != settlementAsset) revert AssetMismatch();
 
         uint256 minSeed = d.minSeed;
         if (seedAmount < minSeed) revert SeedTooLow();
 
-        bytes32 structHash = keccak256(
-            abi.encode(CLAIM_AND_SEED_TYPEHASH, draftId, asset, seedAmount, deadline, nonces[msg.sender])
-        );
+        bytes32 structHash = _hashClaimAndSeed(draftId, asset, seedAmount, deadline, nonces[msg.sender]);
         bytes32 digest = _hashTypedDataV4(structHash);
         address signer = digest.recover(sig);
         if (signer != msg.sender) revert InvalidSignature();
@@ -125,7 +129,8 @@ contract DraftClaimManager is EIP712, Ownable {
             seedShares: shares
         });
 
-        draftBoard.setClaimed(draftId, msg.sender);
+        claimTypeByDraftId[draftId] = ClaimType.SEEDED;
+        DRAFT_BOARD.setClaimed(draftId, msg.sender);
 
         emit DraftClaimedAndSeeded(draftId, msg.sender, vault, seedAmount, shares);
     }
@@ -154,17 +159,15 @@ contract DraftClaimManager is EIP712, Ownable {
         uint256 expiry,
         bytes calldata sig
     ) external {
-        if (draftBoard.getStatus(draftId) != MarketDraftBoard.DraftStatus.Proposed) {
-            if (draftBoard.getStatus(draftId) == MarketDraftBoard.DraftStatus.Claimed) {
+        if (DRAFT_BOARD.getStatus(draftId) != MarketDraftBoard.DraftStatus.Proposed) {
+            if (DRAFT_BOARD.getStatus(draftId) == MarketDraftBoard.DraftStatus.Claimed) {
                 revert DraftNotProposed();
             }
             revert DraftDoesNotExist();
         }
         if (expiry != 0 && block.timestamp > expiry) revert ClaimExpired();
 
-        bytes32 structHash = keccak256(
-            abi.encode(CLAIM_DRAFT_TYPEHASH, draftId, bond, seedCommitment, expiry, nonces[msg.sender])
-        );
+        bytes32 structHash = _hashClaimDraft(draftId, bond, seedCommitment, expiry, nonces[msg.sender]);
         bytes32 digest = _hashTypedDataV4(structHash);
         address signer = digest.recover(sig);
         if (signer != msg.sender) revert InvalidSignature();
@@ -181,7 +184,8 @@ contract DraftClaimManager is EIP712, Ownable {
             seedShares: 0
         });
 
-        draftBoard.setClaimed(draftId, msg.sender);
+        claimTypeByDraftId[draftId] = ClaimType.LEGACY;
+        DRAFT_BOARD.setClaimed(draftId, msg.sender);
 
         emit DraftClaimed(draftId, msg.sender, bond, seedCommitment);
     }
@@ -202,9 +206,7 @@ contract DraftClaimManager is EIP712, Ownable {
         uint256 expiry,
         address signer
     ) external view returns (bytes32) {
-        bytes32 structHash = keccak256(
-            abi.encode(CLAIM_DRAFT_TYPEHASH, draftId, bond, seedCommitment, expiry, nonces[signer])
-        );
+        bytes32 structHash = _hashClaimDraft(draftId, bond, seedCommitment, expiry, nonces[signer]);
         return _hashTypedDataV4(structHash);
     }
 
@@ -216,9 +218,47 @@ contract DraftClaimManager is EIP712, Ownable {
         uint256 deadline,
         address signer
     ) external view returns (bytes32) {
-        bytes32 structHash = keccak256(
-            abi.encode(CLAIM_AND_SEED_TYPEHASH, draftId, asset, seedAmount, deadline, nonces[signer])
-        );
+        bytes32 structHash = _hashClaimAndSeed(draftId, asset, seedAmount, deadline, nonces[signer]);
         return _hashTypedDataV4(structHash);
+    }
+
+    function _hashClaimDraft(
+        bytes32 draftId,
+        uint256 bond,
+        bytes32 seedCommitment,
+        uint256 expiry,
+        uint256 nonce
+    ) internal pure returns (bytes32 digest) {
+        bytes32 claimDraftTypehash = CLAIM_DRAFT_TYPEHASH;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, claimDraftTypehash)
+            mstore(add(ptr, 0x20), draftId)
+            mstore(add(ptr, 0x40), bond)
+            mstore(add(ptr, 0x60), seedCommitment)
+            mstore(add(ptr, 0x80), expiry)
+            mstore(add(ptr, 0xa0), nonce)
+            digest := keccak256(ptr, 0xc0)
+        }
+    }
+
+    function _hashClaimAndSeed(
+        bytes32 draftId,
+        address asset,
+        uint256 seedAmount,
+        uint256 deadline,
+        uint256 nonce
+    ) internal pure returns (bytes32 digest) {
+        bytes32 claimAndSeedTypehash = CLAIM_AND_SEED_TYPEHASH;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, claimAndSeedTypehash)
+            mstore(add(ptr, 0x20), draftId)
+            mstore(add(ptr, 0x40), asset)
+            mstore(add(ptr, 0x60), seedAmount)
+            mstore(add(ptr, 0x80), deadline)
+            mstore(add(ptr, 0xa0), nonce)
+            digest := keccak256(ptr, 0xc0)
+        }
     }
 }

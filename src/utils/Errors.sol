@@ -28,4 +28,5 @@ library Errors {
     error MarketDoesNotExist();
     error MarketAlreadyResolved();
     error CheckpointAfterTradingClose();
+    error LiquidityVaultRequired();
 }

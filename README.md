@@ -64,3 +64,12 @@ $ forge --help
 $ anvil --help
 $ cast --help
 ```
+
+## Production Mode
+
+For production deployment:
+
+- **Curated publish required**: Markets must be created via the curated pipeline (proposeDraft → claimAndSeed → publish). Legacy `claimDraft` (no seed) cannot publish.
+- **Legacy pool lane**: The PoolMarketLegacy lane is demo-only and should not be wired in production deploy config.
+- **Seeded claim**: All curated markets require `claimAndSeed`; seed shares are locked in DraftClaimManager until tradingClose.
+- See `.docs/Invariants.md` for formal invariant list.

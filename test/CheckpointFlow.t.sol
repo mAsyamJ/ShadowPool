@@ -2,12 +2,14 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {console2} from "forge-std/console2.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {ShadowTypes} from "../src/libs/ShadowTypes.sol";
 import {Hashing} from "../src/libs/Hashing.sol";
 import {CollateralVault} from "../src/execution/CollateralVault.sol";
 import {ExecutionLedger} from "../src/execution/ExecutionLedger.sol";
 import {ChannelSettlement} from "../src/execution/ChannelSettlement.sol";
+import {Errors} from "../src/utils/Errors.sol";
 
 contract CheckpointFlowTest is Test {
     ERC20Mock token;
@@ -67,6 +69,8 @@ contract CheckpointFlowTest is Test {
     }
 
     function testRejectsBadDeltasHash() public {
+        console2.log("[TEST] testRejectsBadDeltasHash");
+        console2.log("[ARRANGE] Create checkpoint with deltas payload but intentionally wrong deltasHash");
         ShadowTypes.Delta[] memory deltas = new ShadowTypes.Delta[](1);
         deltas[0] = ShadowTypes.Delta({
             user: user,
@@ -79,6 +83,7 @@ contract CheckpointFlowTest is Test {
 
         bytes memory opSig = _signCheckpoint(cp, operatorPk);
         bytes[] memory userSigs = _toBytesArray(_signCheckpoint(cp, userPk));
+        console2.log("[ASSERT] submitCheckpoint reverts when checkpoint hash does not match payload");
         vm.expectRevert();
         channel.submitCheckpoint(
             cp,
@@ -90,6 +95,8 @@ contract CheckpointFlowTest is Test {
     }
 
     function testRejectsNonIncreasingNonce() public {
+        console2.log("[TEST] testRejectsNonIncreasingNonce");
+        console2.log("[ARRANGE] Submit and finalize nonce=1 checkpoint");
         ShadowTypes.Delta[] memory deltas = new ShadowTypes.Delta[](1);
         deltas[0] = ShadowTypes.Delta({
             user: user,
@@ -110,14 +117,17 @@ contract CheckpointFlowTest is Test {
         vm.warp(block.timestamp + 31 minutes);
         channel.finalizeCheckpoint(marketId, sessionId, deltas);
 
-        // Now latestNonce is 1. Submitting nonce 1 again should revert.
+        console2.log("[ACT] Re-submit another checkpoint with same nonce=1");
         bytes memory opSig2 = _signCheckpoint(cp, operatorPk);
         bytes[] memory userSigs2 = _toBytesArray(_signCheckpoint(cp, userPk));
+        console2.log("[ASSERT] Duplicate nonce is rejected");
         vm.expectRevert();
         channel.submitCheckpoint(cp, deltas, opSig2, _toArray(user), userSigs2);
     }
 
     function testRejectsInvalidOperatorSig() public {
+        console2.log("[TEST] testRejectsInvalidOperatorSig");
+        console2.log("[ARRANGE] Build valid checkpoint but sign operator slot with user key");
         ShadowTypes.Delta[] memory deltas = new ShadowTypes.Delta[](1);
         deltas[0] = ShadowTypes.Delta({
             user: user,
@@ -130,11 +140,14 @@ contract CheckpointFlowTest is Test {
 
         bytes memory wrongOpSig = _signCheckpoint(cp, userPk);
         bytes[] memory userSigs = _toBytesArray(_signCheckpoint(cp, userPk));
+        console2.log("[ASSERT] Invalid operator signature reverts");
         vm.expectRevert();
         channel.submitCheckpoint(cp, deltas, wrongOpSig, _toArray(user), userSigs);
     }
 
     function testRejectsInvalidUserSig() public {
+        console2.log("[TEST] testRejectsInvalidUserSig");
+        console2.log("[ARRANGE] Build valid checkpoint but sign user slot with operator key");
         ShadowTypes.Delta[] memory deltas = new ShadowTypes.Delta[](1);
         deltas[0] = ShadowTypes.Delta({
             user: user,
@@ -147,11 +160,14 @@ contract CheckpointFlowTest is Test {
 
         bytes memory opSig = _signCheckpoint(cp, operatorPk);
         bytes[] memory wrongUserSigs = _toBytesArray(_signCheckpoint(cp, operatorPk));
+        console2.log("[ASSERT] Invalid user signature reverts");
         vm.expectRevert();
         channel.submitCheckpoint(cp, deltas, opSig, _toArray(user), wrongUserSigs);
     }
 
     function testChallengeBeforeDeadlineSucceeds() public {
+        console2.log("[TEST] testChallengeBeforeDeadlineSucceeds");
+        console2.log("[ARRANGE] Submit pending checkpoint nonce=5");
         ShadowTypes.Delta[] memory deltas1 = new ShadowTypes.Delta[](1);
         deltas1[0] = ShadowTypes.Delta({
             user: user,
@@ -180,6 +196,7 @@ contract CheckpointFlowTest is Test {
         bytes32 dHash2 = Hashing.hashDeltas(deltas2);
         ShadowTypes.Checkpoint memory cp2 = _makeCheckpoint(6, dHash2);
 
+        console2.log("[ACT] Challenge with newer nonce=6 before challenge window closes");
         channel.challengeCheckpoint(
             cp2,
             deltas2,
@@ -188,15 +205,17 @@ contract CheckpointFlowTest is Test {
             _toBytesArray(_signCheckpoint(cp2, userPk))
         );
 
+        console2.log("[ASSERT] No final nonce yet and pending record replaced with nonce=6");
         assertEq(channel.latestNonce(marketId, sessionId), 0);
         bytes32 key = keccak256(abi.encode(marketId, sessionId));
-        (uint64 pendingNonce, uint64 deadline,, bytes32 stateHash, bytes32 deltasHash, bytes32 riskHash, bool exists) =
-            channel.pendingByKey(key);
+        (uint64 pendingNonce, , , , , , bool exists) = channel.pendingByKey(key);
         assertTrue(exists);
         assertEq(pendingNonce, 6);
     }
 
     function testFinalizeBeforeDeadlineFails() public {
+        console2.log("[TEST] testFinalizeBeforeDeadlineFails");
+        console2.log("[ARRANGE] Submit checkpoint and attempt immediate finalize");
         ShadowTypes.Delta[] memory deltas = new ShadowTypes.Delta[](1);
         deltas[0] = ShadowTypes.Delta({
             user: user,
@@ -215,11 +234,59 @@ contract CheckpointFlowTest is Test {
             _toBytesArray(_signCheckpoint(cp, userPk))
         );
 
+        console2.log("[ASSERT] Finalization before challenge deadline reverts");
         vm.expectRevert();
         channel.finalizeCheckpoint(marketId, sessionId, deltas);
     }
 
+    function testReplayAcrossSessionReverts() public {
+        console2.log("[TEST] testReplayAcrossSessionReverts");
+        console2.log("[ARRANGE] Finalize checkpoint in session-1 then replay same nonce in session-2");
+        ShadowTypes.Delta[] memory deltas = new ShadowTypes.Delta[](1);
+        deltas[0] = ShadowTypes.Delta({
+            user: user,
+            outcomeIndex: 0,
+            sharesDelta: 10,
+            cashDelta: -1000
+        });
+        bytes32 dHash = Hashing.hashDeltas(deltas);
+        ShadowTypes.Checkpoint memory cp = _makeCheckpoint(1, dHash);
+
+        channel.submitCheckpoint(
+            cp,
+            deltas,
+            _signCheckpoint(cp, operatorPk),
+            _toArray(user),
+            _toBytesArray(_signCheckpoint(cp, userPk))
+        );
+        vm.warp(block.timestamp + 31 minutes);
+        channel.finalizeCheckpoint(marketId, sessionId, deltas);
+
+        bytes32 otherSessionId = keccak256("session-2");
+        ShadowTypes.Checkpoint memory cpReplay = _makeCheckpoint(1, dHash);
+        cpReplay.sessionId = otherSessionId;
+        bytes32 dHash2 = Hashing.hashDeltas(deltas);
+        cpReplay.deltasHash = dHash2;
+
+        console2.log("[ACT] Finalize replayed checkpoint under different session id");
+        channel.submitCheckpoint(
+            cpReplay,
+            deltas,
+            _signCheckpoint(cpReplay, operatorPk),
+            _toArray(user),
+            _toBytesArray(_signCheckpoint(cpReplay, userPk))
+        );
+        vm.warp(block.timestamp + 31 minutes);
+        channel.finalizeCheckpoint(marketId, otherSessionId, deltas);
+
+        console2.log("[ASSERT] Original session has no pending checkpoint and re-finalize reverts");
+        vm.expectRevert(Errors.NoPending.selector);
+        channel.finalizeCheckpoint(marketId, sessionId, deltas);
+    }
+
     function testFinalizeAfterDeadlineSucceeds() public {
+        console2.log("[TEST] testFinalizeAfterDeadlineSucceeds");
+        console2.log("[ARRANGE] Submit checkpoint that grants user shares and debits cash");
         ShadowTypes.Delta[] memory deltas = new ShadowTypes.Delta[](1);
         deltas[0] = ShadowTypes.Delta({
             user: user,
@@ -238,9 +305,11 @@ contract CheckpointFlowTest is Test {
             _toBytesArray(_signCheckpoint(cp, userPk))
         );
 
+        console2.log("[ACT] Warp past challenge window and finalize");
         vm.warp(block.timestamp + 31 minutes);
         channel.finalizeCheckpoint(marketId, sessionId, deltas);
 
+        console2.log("[ASSERT] Ledger position and vault free balance reflect finalized deltas");
         assertEq(ledger.positionOf(user, marketId, 0), 10);
         assertEq(vault.freeBalance(user), 10 ether - 1000);
     }

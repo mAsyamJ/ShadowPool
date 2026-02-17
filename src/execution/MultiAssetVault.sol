@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IMultiAssetVault} from "../interfaces/IMultiAssetVault.sol";
 import {Errors} from "../utils/Errors.sol";
@@ -11,6 +12,7 @@ import {Errors} from "../utils/Errors.sol";
 /// @notice Per-asset custody: deposit/withdraw, lock/unlock per session.
 contract MultiAssetVault is IMultiAssetVault, Ownable {
     using SafeERC20 for IERC20;
+    using SafeCast for int256;
 
     address public channelSettlement;
     address public marketRegistry;
@@ -114,10 +116,10 @@ contract MultiAssetVault is IMultiAssetVault, Ownable {
             if (delta == 0) continue;
 
             if (delta > 0) {
-                uint256 d = uint128(delta);
+                uint256 d = int256(delta).toUint256();
                 _freeBalance[asset][u] += d;
             } else {
-                uint256 d = uint128(-delta);
+                uint256 d = (-int256(delta)).toUint256();
                 if (_freeBalance[asset][u] < d) revert InsufficientFreeBalance();
                 _freeBalance[asset][u] -= d;
             }
@@ -149,6 +151,15 @@ contract MultiAssetVault is IMultiAssetVault, Ownable {
         pure
         returns (bytes32)
     {
-        return keccak256(abi.encode(asset, user, marketId, sessionId));
+        bytes32 key;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, asset)
+            mstore(add(ptr, 0x20), user)
+            mstore(add(ptr, 0x40), marketId)
+            mstore(add(ptr, 0x60), sessionId)
+            key := keccak256(ptr, 0x80)
+        }
+        return key;
     }
 }

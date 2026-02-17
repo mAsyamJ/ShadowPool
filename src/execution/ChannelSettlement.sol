@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ShadowTypes} from "../libs/ShadowTypes.sol";
 import {ShadowEIP712} from "../libs/ShadowEIP712.sol";
 import {ICollateralVault} from "../interfaces/ICollateralVault.sol";
@@ -18,11 +19,13 @@ import {ILiquidityVault4626} from "../interfaces/ILiquidityVault4626.sol";
 /// @title ChannelSettlement
 /// @notice Checkpoint-based Yellow session settlement with nonce monotonicity and challenge window.
 contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
+    using SafeCast for int256;
+
     error InvalidLiquidityVaultAsset();
 
-    ICollateralVault public immutable vault;
+    ICollateralVault public immutable VAULT;
     IMultiAssetVault public multiAssetVault;
-    IExecutionLedger public immutable ledger;
+    IExecutionLedger public immutable LEDGER;
     IMarketRegistry public marketRegistry;
     FeeManager public feeManager;
     FeePool public feePool;
@@ -61,8 +64,8 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
     event MultiAssetVaultUpdated(address indexed previous, address indexed current);
 
     constructor(address vault_, address ledger_, address operator_) Ownable(msg.sender) {
-        vault = ICollateralVault(vault_);
-        ledger = IExecutionLedger(ledger_);
+        VAULT = ICollateralVault(vault_);
+        LEDGER = IExecutionLedger(ledger_);
         operator = operator_;
     }
 
@@ -96,7 +99,14 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
     }
 
     function _key(uint256 marketId, bytes32 sessionId) internal pure returns (bytes32) {
-        return keccak256(abi.encode(marketId, sessionId));
+        bytes32 key;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, marketId)
+            mstore(add(ptr, 0x20), sessionId)
+            key := keccak256(ptr, 0x40)
+        }
+        return key;
     }
 
     function latestNonce(uint256 marketId, bytes32 sessionId) external view returns (uint64) {
@@ -250,7 +260,7 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
             }
         }
 
-        ledger.applyDeltas(marketId, sessionId, deltas);
+        LEDGER.applyDeltas(marketId, sessionId, deltas);
 
         (
             uint256 protocolFee,
@@ -263,23 +273,31 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         address lpVault = address(marketRegistry) != address(0)
             ? marketRegistry.liquidityVaultByMarketId(marketId)
             : address(0);
+
+        // Solvency invariant: market flagged as LP must have vault bound
+        if (address(marketRegistry) != address(0)
+            && marketRegistry.usesLpVaultByMarketId(marketId)
+            && lpVault == address(0)) {
+            revert Errors.LiquidityVaultRequired();
+        }
+
         if (lpVault != address(0)) {
             address vaultAsset = ILiquidityVault4626(lpVault).asset();
             if (vaultAsset != settlementAsset) revert InvalidLiquidityVaultAsset();
         }
 
-        // Net counterparty transfer: LP vault <-> TradingCashLedger
+        // Net counterparty transfer: LP VAULT <-> TradingCashLedger
         if (lpVault != address(0)) {
             if (netTraderDelta > 0) {
                 ILiquidityVault4626(lpVault).payToTradingLedger(
-                    address(multiAssetVault) != address(0) ? address(multiAssetVault) : address(vault),
-                    uint256(netTraderDelta)
+                    address(multiAssetVault) != address(0) ? address(multiAssetVault) : address(VAULT),
+                    netTraderDelta.toUint256()
                 );
             } else if (netTraderDelta < 0) {
                 if (address(multiAssetVault) != address(0)) {
-                    multiAssetVault.transferAsset(lpVault, settlementAsset, uint256(-netTraderDelta));
+                    multiAssetVault.transferAsset(lpVault, settlementAsset, (-netTraderDelta).toUint256());
                 } else {
-                    vault.transferToFeeCollector(lpVault, uint256(-netTraderDelta));
+                    VAULT.transferToFeeCollector(lpVault, (-netTraderDelta).toUint256());
                 }
             }
         }
@@ -289,7 +307,7 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
             if (address(multiAssetVault) != address(0)) {
                 multiAssetVault.transferAsset(address(feePool), settlementAsset, protocolFee);
             } else {
-                vault.transferToFeeCollector(address(feePool), protocolFee);
+                VAULT.transferToFeeCollector(address(feePool), protocolFee);
             }
             feePool.recordFeeCollected(settlementAsset, protocolFee, marketId, sessionId);
         }
@@ -301,9 +319,9 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
             }
         } else if (lpFee > 0) {
             if (lpVault != address(0) && ILiquidityVault4626(lpVault).totalSupply() > 0) {
-                vault.transferToFeeCollector(lpVault, lpFee);
+                VAULT.transferToFeeCollector(lpVault, lpFee);
             } else if (address(feePool) != address(0) && feePool.treasuryPool() != address(0)) {
-                vault.transferToFeeCollector(feePool.treasuryPool(), lpFee);
+                VAULT.transferToFeeCollector(feePool.treasuryPool(), lpFee);
             }
         }
         if (creatorFee > 0 && address(marketRegistry) != address(0)) {
@@ -312,7 +330,7 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
                 if (address(multiAssetVault) != address(0)) {
                     multiAssetVault.transferAsset(creator, settlementAsset, creatorFee);
                 } else {
-                    vault.transferToFeeCollector(creator, creatorFee);
+                    VAULT.transferToFeeCollector(creator, creatorFee);
                 }
             }
         }
@@ -339,7 +357,7 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
     {
         settlementAsset = address(multiAssetVault) != address(0) && address(marketRegistry) != address(0)
             ? marketRegistry.getSettlementAsset(marketId)
-            : vault.token();
+            : VAULT.token();
 
         address[] memory users = new address[](deltas.length);
         int128[] memory cashDeltas = new int128[](deltas.length);
@@ -373,7 +391,7 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
             if (address(multiAssetVault) != address(0)) {
                 multiAssetVault.applyCashDeltas(settlementAsset, marketId, sessionId, usersTrimmed, cashDeltasTrimmed);
             } else {
-                vault.applyCashDeltas(marketId, sessionId, usersTrimmed, cashDeltasTrimmed);
+                VAULT.applyCashDeltas(marketId, sessionId, usersTrimmed, cashDeltasTrimmed);
             }
         }
     }

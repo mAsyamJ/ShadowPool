@@ -62,7 +62,13 @@ contract SessionFinalizer is ISessionFinalizer, Ownable {
             revert InvalidPayload();
         }
         // create the session key
-        bytes32 sessionKey = keccak256(abi.encode(decoded.marketId, decoded.sessionId));
+        bytes32 sessionKey;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, mload(decoded))
+            mstore(add(ptr, 0x20), mload(add(decoded, 0x20)))
+            sessionKey := keccak256(ptr, 0x40)
+        }
         // if the session is already finalized, revert
         if (finalizedSessions[sessionKey]) revert AlreadyFinalized();
         // create the state hash

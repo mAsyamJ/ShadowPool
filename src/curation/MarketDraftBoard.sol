@@ -86,10 +86,10 @@ contract MarketDraftBoard is Ownable, AccessControl {
     /// @notice Propose a new draft. Only owner or AI_ORACLE_ROLE.
     function proposeDraft(
         bytes32 questionHash,
-        string calldata questionURI_,
+        string calldata questionUri_,
         MarketType marketType_,
         bytes32 outcomesHash,
-        string calldata outcomesURI_,
+        string calldata outcomesUri_,
         bytes32 resolveSpecHash_,
         uint48 tradingOpen_,
         uint48 tradingClose_,
@@ -111,10 +111,10 @@ contract MarketDraftBoard is Ownable, AccessControl {
 
         drafts[draftId] = Draft({
             questionHash: questionHash,
-            questionURI: questionURI_,
+            questionURI: questionUri_,
             marketType: marketType_,
             outcomesHash: outcomesHash,
-            outcomesURI: outcomesURI_,
+            outcomesURI: outcomesUri_,
             resolveSpecHash: resolveSpecHash_,
             tradingOpen: tradingOpen_,
             tradingClose: tradingClose_,

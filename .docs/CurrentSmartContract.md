@@ -519,3 +519,260 @@ For this architecture state, the intended lane is:
 6. Redeem through registry from configured vault path.
 
 This document describes current onchain behavior exactly as implemented in this repository state.
+
+---
+
+## 14) 2026-02-17 Deep Current-System Extension (Authoritative Addendum)
+
+Date of verification: 2026-02-17  
+Validation rerun on this state: `forge test -q` passes.
+
+This section extends the document with implementation-exact details from `src/**` and `test/**`.
+
+## 14.1 Scope Clarification
+
+There are effectively two production-relevant lanes and one compatibility lane:
+
+1. Primary lane (recommended):  
+`MarketDraftBoard -> DraftClaimManager.claimAndSeed -> CREPublishReceiver -> MarketFactory.createFromDraft -> MarketRegistry -> ChannelSettlement -> (MultiAssetVault or CollateralVault) -> redeem`
+
+2. Oracle resolution lane:  
+`CREReceiver -> OracleCoordinator -> SettlementRouter -> MarketRegistry.onReport(0x01...)`
+
+3. Legacy compatibility lane (kept for demo/backward compatibility):  
+`PoolMarketLegacy` + optional `SessionFinalizer`
+
+## 14.2 Concrete Wiring Requirements (Deployment Truth)
+
+For curated + checkpoint lane to work end-to-end, these links must be set:
+
+- `MarketRegistry.marketFactory = MarketFactory`
+- `MarketRegistry.settlementRouter = SettlementRouter`
+- `MarketRegistry.multiAssetVault` optional, but if set then `setDefaultSettlementAsset` should also be set
+- `ExecutionLedger.channelSettlement = ChannelSettlement`
+- `CollateralVault.channelSettlement = ChannelSettlement`
+- `CollateralVault.marketRegistry = MarketRegistry` (for redeem)
+- if using MAV: `MultiAssetVault.channelSettlement = ChannelSettlement` and `MultiAssetVault.marketRegistry = MarketRegistry`
+- `ChannelSettlement.marketRegistry = MarketRegistry`
+- optional fee lane: `ChannelSettlement.feeManager`, `ChannelSettlement.feePool`, `FeePool.feeCollector = ChannelSettlement`
+- `SettlementRouter.oracleCoordinator = OracleCoordinator`
+- optional `SettlementRouter.channelSettlement` for checkpoint payload routing
+- fallback-only `SettlementRouter.sessionFinalizer` if no `channelSettlement`
+- `OracleCoordinator.creReceiver = CREReceiver`
+- `OracleCoordinator.settlementRouter = SettlementRouter`
+- optional `OracleCoordinator.reportValidator = ReportValidator`
+- curated lane:
+- `MarketFactory.marketRegistry = MarketRegistry`
+- `MarketFactory.draftBoard = MarketDraftBoard`
+- `MarketFactory.draftClaimManager = DraftClaimManager` (required for strict seeded publish enforcement)
+- `MarketFactory.approvedPublishReceivers[CREPublishReceiver] = true`
+- `MarketDraftBoard.draftClaimManager = DraftClaimManager`
+- `MarketDraftBoard.PUBLISH_CALLER_ROLE` granted to `MarketFactory`
+- `DraftClaimManager.liquidityVaultFactory = LiquidityVaultFactory`
+
+## 14.3 `createFromDraft` Is Now Strictly Seed-Gated (When ClaimManager Is Configured)
+
+Behavior in current code:
+
+- caller must be approved publish receiver (`UnauthorizedPublishReceiver` otherwise)
+- curated path must be configured (`CuratedPathNotConfigured` otherwise)
+- draft times in payload cannot override draft (`DraftTimeMismatch`)
+- if `draftClaimManager` is set, claim type must be `SEEDED` (`SeededClaimRequired`)
+- if draft has `minSeed > 0`, liquidity vault must exist (`SeededClaimRequired`)
+- if vault asset and draft settlement asset differ, revert (`InvalidLiquidityVaultAsset`)
+- on success:
+- market created with full params from draft times
+- vault bound via `MarketRegistry.setLiquidityVault`
+- draft marked published and reverse-linked via `draftIdByMarketId`
+
+This is stricter than older behavior described earlier in this doc.
+
+## 14.4 Seed Locking Is Onchain-Enforced at Share Custody Level
+
+Current `DraftClaimManager.claimAndSeed` flow:
+
+- transfers seed asset from claimer to manager
+- deposits into vault with receiver = `DraftClaimManager` (not claimer)
+- stores `seedSharesLocked[draftId]` and `seedUnlockTime[draftId]`
+- unlock path transfers vault shares from manager to claimer only after unlock time
+
+So seed lock is no longer metadata-only; shares are actually custody-locked in manager until `unlockSeedShares`.
+
+## 14.5 Checkpoint Pipeline: Exact Guarantees
+
+`ChannelSettlement` enforces:
+
+- bounded payload (`MAX_DELTAS=256`, `MAX_USERS=256`)
+- `users.length == userSigs.length`
+- `hash(deltas) == cp.deltasHash`
+- validity window (`validAfter`, `validBefore`)
+- operator signature must recover to configured `operator`
+- every user signature must recover over checkpoint digest
+- `users` must be unique
+- every delta user must appear in `users`
+- nonce strictly increasing over finalized nonce
+- challenge constraints:
+- pending must exist
+- within challenge window
+- replacement nonce must be newer than pending nonce
+
+Finalize enforces:
+
+- pending exists and challenge window has elapsed
+- finalize deltas hash equals stored pending hash
+- if registry is set:
+- market must not be resolved
+- `lastTradeAt <= tradingClose` when `tradingClose != 0`
+- applies share deltas first (`ExecutionLedger`)
+- then cash deltas + fees
+- then LP counterparty transfers
+- then protocol/lp/creator fee routing
+- writes finalized nonce and clears pending
+
+## 14.6 Cash and Fee Semantics (Current Math)
+
+Fee logic (`FeeManager`) on positive `cashDelta` only:
+
+- `totalFee = profit * protocolFeeBps / 10000`
+- split of `totalFee`:
+- protocol bucket: `1 - lpShare - creatorShare`
+- LP bucket: `lpFeeShareBps`
+- creator bucket: `creatorFeeShareBps`
+- trader net cash delta = `profit - totalFee`
+
+No fee applied to zero/negative trader deltas.
+
+`ChannelSettlement` aggregates per-checkpoint:
+
+- `protocolFee`, `lpFee`, `creatorFee`
+- `netTraderDelta = sum(net trader cash deltas)`
+
+Then:
+
+- if LP vault exists:
+- `netTraderDelta > 0`: LP vault pays trading vault (`payToTradingLedger`)
+- `netTraderDelta < 0`: trading vault transfers asset to LP vault
+- protocol fee:
+- transferred to `FeePool` only when `feePool.feeCollector == ChannelSettlement`
+- LP fee:
+- donated to LP vault when LP vault exists and has `totalSupply > 0`
+- otherwise fallback to treasury pool (if configured)
+- creator fee:
+- transferred to market creator (if non-zero creator)
+
+## 14.7 LP Solvency Safety Flag
+
+`MarketRegistry.setLiquidityVault` sets:
+
+- `liquidityVaultByMarketId[marketId] = vault`
+- `usesLpVaultByMarketId[marketId] = true` if vault non-zero (sticky flag)
+
+`ChannelSettlement.finalizeCheckpoint` then enforces:
+
+- if `usesLpVaultByMarketId == true` and current `liquidityVaultByMarketId == 0`, revert `LiquidityVaultRequired`
+
+This prevents silently finalizing LP-designated markets without a bound LP vault.
+
+## 14.8 Settlement Asset Resolution Logic
+
+`MarketRegistry.getSettlementAsset(marketId)` precedence:
+
+1. explicit `settlementAssetByMarketId[marketId]`
+2. if `multiAssetVault != 0` and `defaultSettlementAsset != 0`, use default
+3. fallback to `CollateralVault.token()`
+
+Implication: if MAV is used without per-market asset and without default asset, flows can still fall back to vault token semantics through existing compatibility assumptions.
+
+## 14.9 Curated Security Model (EIP-712 Paths)
+
+`DraftClaimManager` signatures:
+
+- `ClaimDraft(...)` typed EIP-712 with user nonce
+- `ClaimAndSeed(...)` typed EIP-712 with user nonce
+
+`CREPublishReceiver` signatures:
+
+- `PublishFromDraft(draftId, paramsHash, chainId, nonce)` typed EIP-712
+- signer must match `creator == claimer(draftId)`
+- nonce increments per creator
+
+Receiver-level authenticity:
+
+- `CREPublishReceiver` and `CREReceiver` inherit `ReceiverTemplate`
+- forwarder check enforced unless intentionally disabled
+- optional workflow metadata checks available (`workflowId`, `author`, `workflowName`)
+
+## 14.10 MarketRegistry Lifecycle Nuances
+
+- `freeze(marketId)` is permissionless and only sets frozen when `block.timestamp >= tradingClose`
+- `resolve` restricted to settlement router
+- `onReport` also restricted to settlement router and expects `0x01` report prefix
+- typed outcome bound checks are enforced at resolve
+- `redeem` is one-shot per `(marketId, user)` and reads winning `shares` from `ExecutionLedger`
+
+Payout source in redeem:
+
+- MAV path if configured
+- else single-asset vault path
+
+## 14.11 Legacy Pool Lane: Current Intent
+
+`PoolMarketLegacy` currently supports:
+
+- binary + categorical + timeline market creation
+- additive same-outcome position updates
+- explicit position reduction (`reducePosition`, `reduceAll`, typed variants)
+- settlement via `onReport(0x01 || abi.encode(...))`
+- pro-rata payout from pooled collateral
+
+This lane remains functional but is not the recommended production lane for checkpoint-based settlement architecture.
+
+## 14.12 Session Routing Behavior
+
+`SettlementRouter.finalizeSession(payload)`:
+
+- only callable by `oracleCoordinator`
+- if `channelSettlement` configured:
+- decodes checkpoint payload
+- forwards to `submitCheckpointFromPayload`
+- emits `SessionPayloadRouted(..., routeType=1)`
+- else if `sessionFinalizer` configured:
+- forwards raw payload to finalizer
+- emits `SessionPayloadRouted(..., routeType=0)`
+- else revert `InvalidAddress`
+
+`onlySessionFinalizer` modifier exists but is currently unused in function entrypoints.
+
+## 14.13 Test-Backed Guarantees (Current)
+
+From current tests:
+
+- `CheckpointFlow.t.sol`: hash mismatch, bad sigs, nonce monotonicity, challenge window checks
+- `SecurityHardening.t.sol`: unsigned delta user rejection, unauthorized resolve rejection, post-close trade timestamp rejection
+- `CurationFlow.t.sol`: seeded publish requirement, draft-time mismatch rejection, share lock custody in manager, wrong-asset precreate replacement handling, unlock gating
+- `FeeFlow.t.sol` + `FuzzFeeSplit.t.sol`: fee split math and boundary behavior
+- `InvariantSolvency.t.sol`: LP vault requirement and settlement solvency invariants
+- `SessionRouting.t.sol`: session payload routing and emitted route events
+- `OracleFlow.t.sol`: CRE -> coordinator -> router -> market settlement flow
+- `PoolMarketTrading.t.sol`: add/reduce/switch position behavior in legacy lane
+
+## 14.14 Operational Checklist (Recommended)
+
+Before enabling production traffic:
+
+1. Keep `ReceiverTemplate` forwarder validation enabled on all receiver contracts.
+2. Configure `draftClaimManager` in `MarketFactory` to enforce seeded publish path.
+3. Set and verify `LiquidityVaultFactory.channelSettlement`.
+4. Set `MarketRegistry.defaultSettlementAsset` when using MAV and markets may omit explicit asset.
+5. Wire `FeePool.feeCollector = ChannelSettlement` or protocol fee collection events will not represent actual custody moves.
+6. Disable/avoid legacy lane routing in production if not needed.
+7. Keep `ReportValidator.minConfidence` at policy-approved threshold.
+
+## 14.15 Superseded/Ambiguous Earlier Notes
+
+The following earlier statements in this document should now be interpreted with this addendum:
+
+- Earlier note saying seed lock is metadata-only is no longer accurate for current code; lock is custody-enforced via manager-held vault shares.
+- Earlier note saying publish accepts claimed drafts regardless of seeded path is no longer accurate when `MarketFactory.draftClaimManager` is configured; `SEEDED` claim is enforced by `createFromDraft`.
+
+This addendum is the source of truth for the 2026-02-17 repository state.

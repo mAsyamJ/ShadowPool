@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {console2} from "forge-std/console2.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {ShadowTypes} from "../src/libs/ShadowTypes.sol";
 import {Hashing} from "../src/libs/Hashing.sol";
@@ -72,6 +73,8 @@ contract FeeFlowTest is Test {
     }
 
     function testFeeAppliedOnPositivePnl() public {
+        console2.log("[TEST] testFeeAppliedOnPositivePnl");
+        console2.log("[ARRANGE] Spender and user are funded; positive pnl goes to user");
         vm.prank(spender);
         token.approve(address(vault), 100 ether);
         vm.prank(spender);
@@ -101,17 +104,40 @@ contract FeeFlowTest is Test {
         userSigs[0] = _signCheckpoint(cp, spenderPk);
         userSigs[1] = _signCheckpoint(cp, userPk);
 
+        console2.log("[ACT] Submit checkpoint and finalize after challenge window");
         channel.submitCheckpoint(cp, deltas, _signCheckpoint(cp, operatorPk), users, userSigs);
         vm.warp(block.timestamp + 31 minutes);
         channel.finalizeCheckpoint(marketId, sessionId, deltas);
 
         uint256 expectedFee = 1000 * 100 / 10_000;
+        console2.log("[ASSERT] FeePool gets 1%% protocol fee and balances are netted correctly");
         assertEq(feePool.balanceOf(address(token)), expectedFee, "FeePool should have 1% of 1000");
         assertEq(vault.freeBalance(user), 10 ether + 1000 - expectedFee, "User gets net after fee");
         assertEq(vault.freeBalance(spender), 10 ether - 1000, "Spender debited");
     }
 
+    function testComputeSplitSumCorrectness() public {
+        console2.log("[TEST] testComputeSplitSumCorrectness");
+        console2.log("[ARRANGE] Configure LP/creator shares and use fixed positive profit");
+        vm.prank(owner);
+        feeManager.setLpFeeShareBps(2000);
+        vm.prank(owner);
+        feeManager.setCreatorFeeShareBps(1000);
+
+        console2.log("[ACT] Compute fee split for profit=10000");
+        int128 profit = 10000;
+        (uint256 protocolFee, uint256 lpFee, uint256 creatorFee, int128 netDelta) =
+            feeManager.computeSplit(profit);
+
+        uint256 totalFee = protocolFee + lpFee + creatorFee;
+        uint256 profitU = uint256(int256(profit));
+        console2.log("[ASSERT] profit = protocolFee + lpFee + creatorFee + netDelta");
+        assertEq(profitU - totalFee, uint256(int256(netDelta)), "protocol+lp+creator+net == profit");
+    }
+
     function testFeeCapEnforcement() public {
+        console2.log("[TEST] testFeeCapEnforcement");
+        console2.log("[ASSERT] Setting fee above cap (201 bps) should revert");
         vm.prank(owner);
         vm.expectRevert(FeeManager.FeeExceedsCap.selector);
         feeManager.setProtocolFeeBps(201);

@@ -3,6 +3,7 @@ pragma solidity 0.8.24;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {ICollateralVault} from "../interfaces/ICollateralVault.sol";
 import {Errors} from "../utils/Errors.sol";
@@ -11,11 +12,12 @@ import {Errors} from "../utils/Errors.sol";
 /// @notice Single custody point for ShadowPool: deposit/withdraw, lock/unlock per session.
 contract CollateralVault is ICollateralVault, Ownable {
     using SafeERC20 for IERC20;
+    using SafeCast for int256;
 
     function token() external view override returns (address) {
-        return address(tokenContract);
+        return address(TOKEN_CONTRACT);
     }
-    IERC20 public immutable tokenContract;
+    IERC20 public immutable TOKEN_CONTRACT;
 
     address public channelSettlement;
     address public marketRegistry;
@@ -39,7 +41,7 @@ contract CollateralVault is ICollateralVault, Ownable {
 
     constructor(address tokenAddress, address channelSettlement_) Ownable(msg.sender) {
         if (tokenAddress == address(0)) revert Errors.InvalidAddress();
-        tokenContract = IERC20(tokenAddress);
+        TOKEN_CONTRACT = IERC20(tokenAddress);
         channelSettlement = channelSettlement_;
     }
 
@@ -60,7 +62,7 @@ contract CollateralVault is ICollateralVault, Ownable {
     function deposit(uint256 amount) external override {
         if (amount == 0) revert Errors.InvalidAmount();
         _freeBalance[msg.sender] += amount;
-        tokenContract.safeTransferFrom(msg.sender, address(this), amount);
+        TOKEN_CONTRACT.safeTransferFrom(msg.sender, address(this), amount);
         emit Deposited(msg.sender, amount);
     }
 
@@ -68,7 +70,7 @@ contract CollateralVault is ICollateralVault, Ownable {
         if (amount == 0) revert Errors.InvalidAmount();
         if (_freeBalance[msg.sender] < amount) revert InsufficientFreeBalance();
         _freeBalance[msg.sender] -= amount;
-        tokenContract.safeTransfer(msg.sender, amount);
+        TOKEN_CONTRACT.safeTransfer(msg.sender, amount);
         emit Withdrawn(msg.sender, amount);
     }
 
@@ -116,11 +118,11 @@ contract CollateralVault is ICollateralVault, Ownable {
 
             if (delta > 0) {
                 // Credit user
-                uint256 d = uint128(delta);
+                uint256 d = int256(delta).toUint256();
                 _freeBalance[u] += d;
             } else {
                 // Debit user (e.g. trade cost)
-                uint256 d = uint128(-delta);
+                uint256 d = (-int256(delta)).toUint256();
                 if (_freeBalance[u] < d) revert InsufficientFreeBalance();
                 _freeBalance[u] -= d;
             }
@@ -131,17 +133,25 @@ contract CollateralVault is ICollateralVault, Ownable {
     function redeemPayout(address to, uint256 amount) external override {
         if (msg.sender != marketRegistry) revert OnlyMarketRegistry();
         if (amount == 0) revert Errors.InvalidAmount();
-        tokenContract.safeTransfer(to, amount);
+        TOKEN_CONTRACT.safeTransfer(to, amount);
     }
 
     /// @notice Transfer tokens to fee collector (e.g. FeePool); only ChannelSettlement.
     function transferToFeeCollector(address to, uint256 amount) external {
         if (msg.sender != channelSettlement) revert OnlyChannelSettlement();
         if (to == address(0) || amount == 0) return;
-        tokenContract.safeTransfer(to, amount);
+        TOKEN_CONTRACT.safeTransfer(to, amount);
     }
 
     function _lockKey(address user, uint256 marketId, bytes32 sessionId) internal pure returns (bytes32) {
-        return keccak256(abi.encode(user, marketId, sessionId));
+        bytes32 key;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, user)
+            mstore(add(ptr, 0x20), marketId)
+            mstore(add(ptr, 0x40), sessionId)
+            key := keccak256(ptr, 0x60)
+        }
+        return key;
     }
 }

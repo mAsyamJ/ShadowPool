@@ -54,6 +54,14 @@ contract ExecutionLedger is IExecutionLedger, Ownable {
     }
 
     function _posKey(address user, uint256 marketId, uint32 outcomeIndex) internal pure returns (bytes32) {
-        return keccak256(abi.encode(user, marketId, outcomeIndex));
+        bytes32 key;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, user)
+            mstore(add(ptr, 0x20), marketId)
+            mstore(add(ptr, 0x40), outcomeIndex)
+            key := keccak256(ptr, 0x60)
+        }
+        return key;
     }
 }

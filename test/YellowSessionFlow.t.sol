@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {console2} from "forge-std/console2.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {SessionFinalizer} from "../src/core/SessionFinalizer.sol";
@@ -47,6 +48,8 @@ contract YellowSessionFlowTest is Test {
     }
 
     function testSessionFinalizationViaCREReceiver() public {
+        console2.log("[TEST] testSessionFinalizationViaCREReceiver");
+        console2.log("[ARRANGE] Build session payload with 2 participants + backend signature");
         uint256 marketId = 1;
         // casting to bytes32 is safe for short ASCII ids
         // forge-lint: disable-next-line(unsafe-typecast)
@@ -78,10 +81,12 @@ contract YellowSessionFlowTest is Test {
 
         token.mint(address(finalizer), 10 ether);
 
+        console2.log("[ACT] Send type-0x03 report through CREReceiver");
         bytes memory report = bytes.concat(bytes1(0x03), abi.encode(payload));
         vm.prank(forwarder);
         receiver.onReport("", report);
 
+        console2.log("[ASSERT] Finalizer transfers exact balances to participants");
         assertEq(token.balanceOf(user1), balances[0]);
         assertEq(token.balanceOf(user2), balances[1]);
     }

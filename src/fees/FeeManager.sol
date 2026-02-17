@@ -2,10 +2,13 @@
 pragma solidity 0.8.24;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 
 /// @title FeeManager
 /// @notice Protocol fee policy with hard caps; computes fee on positive PnL; supports protocol/lp/creator split.
 contract FeeManager is Ownable {
+    using SafeCast for int256;
+    using SafeCast for uint256;
     uint16 public protocolFeeBps;
     uint16 public lpFeeShareBps; // share of total fee to LPs (0-10000)
     uint16 public creatorFeeShareBps; // share of total fee to creator (0-10000)
@@ -52,9 +55,9 @@ contract FeeManager is Ownable {
     /// @param pnlDelta Cash delta (positive = profit). Fee only applied when > 0.
     function computeFee(int128 pnlDelta) external view returns (uint256 fee, int128 netDelta) {
         if (pnlDelta <= 0) return (0, pnlDelta);
-        uint256 profit = uint128(pnlDelta);
+        uint256 profit = int256(pnlDelta).toUint256();
         fee = (profit * protocolFeeBps) / BPS_DENOMINATOR;
-        netDelta = int128(int256(profit - fee));
+        netDelta = (profit - fee).toInt256().toInt128();
     }
 
     /// @notice Compute fee split for positive PnL. Returns protocol, lp, creator fees and net delta.
@@ -64,11 +67,11 @@ contract FeeManager is Ownable {
         returns (uint256 protocolFee, uint256 lpFee, uint256 creatorFee, int128 netDelta)
     {
         if (pnlDelta <= 0) return (0, 0, 0, pnlDelta);
-        uint256 profit = uint128(pnlDelta);
+        uint256 profit = int256(pnlDelta).toUint256();
         uint256 totalFee = (profit * protocolFeeBps) / BPS_DENOMINATOR;
         protocolFee = (totalFee * (BPS_DENOMINATOR - lpFeeShareBps - creatorFeeShareBps)) / BPS_DENOMINATOR;
         lpFee = (totalFee * lpFeeShareBps) / BPS_DENOMINATOR;
         creatorFee = (totalFee * creatorFeeShareBps) / BPS_DENOMINATOR;
-        netDelta = int128(int256(profit - totalFee));
+        netDelta = (profit - totalFee).toInt256().toInt128();
     }
 }

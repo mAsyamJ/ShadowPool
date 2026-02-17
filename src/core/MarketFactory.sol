@@ -270,6 +270,12 @@ contract MarketFactory is ReceiverTemplate {
             ? draftClaimManager.getLiquidityVault(draftId)
             : address(0);
 
+        // Curated publish requires claimAndSeed (SEEDED claim type). Legacy claimDraft cannot publish.
+        if (address(draftClaimManager) != address(0)
+            && draftClaimManager.claimTypeByDraftId(draftId) != DraftClaimManager.ClaimType.SEEDED) {
+            revert SeededClaimRequired();
+        }
+
         // For seeded curated markets, a seeded claim is mandatory before publish.
         if (d.minSeed > 0 && liquidityVault == address(0)) revert SeededClaimRequired();
 

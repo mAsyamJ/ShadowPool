@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
+import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ICollateralVault} from "../interfaces/ICollateralVault.sol";
 import {IMultiAssetVault} from "../interfaces/IMultiAssetVault.sol";
 import {IExecutionLedger} from "../interfaces/IExecutionLedger.sol";
@@ -9,8 +10,9 @@ import {IMarketRegistry} from "../interfaces/IMarketRegistry.sol";
 import {Errors} from "../utils/Errors.sol";
 
 /// @title MarketRegistry
-/// @notice Registry, resolution, and redeem-from-ledger for ShadowPool markets.
+/// @notice Registry, resolution, and redeem-from-LEDGER for ShadowPool markets.
 contract MarketRegistry is IMarketRegistry, Ownable {
+    using SafeCast for int256;
     error MarketDoesNotExist();
     error MarketAlreadySettled();
     error MarketNotSettled();
@@ -58,18 +60,19 @@ contract MarketRegistry is IMarketRegistry, Ownable {
     mapping(uint256 => mapping(address => bool)) internal hasRedeemed;
     mapping(uint256 => address) public settlementAssetByMarketId;
     mapping(uint256 => address) public liquidityVaultByMarketId;
+    mapping(uint256 => bool) public usesLpVaultByMarketId;
     address public marketFactory;
     address public settlementRouter;
     IMultiAssetVault public multiAssetVault;
     address public defaultSettlementAsset;
 
-    ICollateralVault public immutable vault;
-    IExecutionLedger public immutable ledger;
+    ICollateralVault public immutable VAULT;
+    IExecutionLedger public immutable LEDGER;
 
     constructor(address vault_, address ledger_) Ownable(msg.sender) {
         if (vault_ == address(0) || ledger_ == address(0)) revert Errors.InvalidAddress();
-        vault = ICollateralVault(vault_);
-        ledger = IExecutionLedger(ledger_);
+        VAULT = ICollateralVault(vault_);
+        LEDGER = IExecutionLedger(ledger_);
     }
 
     function setMarketFactory(address factory) external onlyOwner {
@@ -88,14 +91,14 @@ contract MarketRegistry is IMarketRegistry, Ownable {
         defaultSettlementAsset = asset;
     }
 
-    /// @notice Returns settlement asset for market; 0 = use vault.token() (legacy).
+    /// @notice Returns settlement asset for market; 0 = use VAULT.token() (legacy).
     function getSettlementAsset(uint256 marketId) external view returns (address) {
         address a = settlementAssetByMarketId[marketId];
         if (a != address(0)) return a;
         if (address(multiAssetVault) != address(0) && defaultSettlementAsset != address(0)) {
             return defaultSettlementAsset;
         }
-        return vault.token();
+        return VAULT.token();
     }
 
     function marketType(uint256 marketId) external view override returns (MarketType) {
@@ -120,10 +123,14 @@ contract MarketRegistry is IMarketRegistry, Ownable {
         return markets[marketId].creator;
     }
 
-    /// @notice Set liquidity vault for market. Only MarketFactory.
+    /// @notice Set liquidity VAULT for market. Only MarketFactory.
+    /// @dev usesLpVaultByMarketId is set true when a non-zero vault is bound and never cleared (defense-in-depth).
     function setLiquidityVault(uint256 marketId, address vaultAddr) external {
         if (msg.sender != marketFactory) revert UnauthorizedFactory();
         liquidityVaultByMarketId[marketId] = vaultAddr;
+        if (vaultAddr != address(0)) {
+            usesLpVaultByMarketId[marketId] = true;
+        }
     }
 
     /// @notice Freeze market when block.timestamp >= tradingClose. Permissionless.
@@ -464,7 +471,7 @@ contract MarketRegistry is IMarketRegistry, Ownable {
 
         if (marketTypeById[marketId] == MarketType.Binary) {
             if (winningOutcome > 1) revert InvalidOutcomeIndex();
-            markets[marketId].outcome = Prediction(uint8(winningOutcome));
+            markets[marketId].outcome = winningOutcome == 0 ? Prediction.Yes : Prediction.No;
         } else {
             if (marketTypeById[marketId] == MarketType.Categorical) {
                 if (winningOutcome >= categoricalOutcomes[marketId].length) revert InvalidOutcomeIndex();
@@ -495,16 +502,16 @@ contract MarketRegistry is IMarketRegistry, Ownable {
             winningOutcome = typedOutcomeIndex[marketId];
         }
 
-        int256 shares = ledger.positionOf(msg.sender, marketId, winningOutcome);
+        int256 shares = LEDGER.positionOf(msg.sender, marketId, winningOutcome);
         if (shares <= 0) revert NothingToRedeem();
 
         hasRedeemed[marketId][msg.sender] = true;
-        payout = uint256(shares);
+        payout = shares.toUint256();
         address asset = this.getSettlementAsset(marketId);
         if (address(multiAssetVault) != address(0)) {
             multiAssetVault.redeemPayout(msg.sender, asset, payout);
         } else {
-            vault.redeemPayout(msg.sender, payout);
+            VAULT.redeemPayout(msg.sender, payout);
         }
         emit Redeemed(marketId, msg.sender, payout);
     }

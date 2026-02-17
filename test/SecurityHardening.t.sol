@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {console2} from "forge-std/console2.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {ShadowTypes} from "../src/libs/ShadowTypes.sol";
 import {Hashing} from "../src/libs/Hashing.sol";
@@ -75,24 +76,32 @@ contract SecurityHardeningTest is Test {
     }
 
     function testMarketRegistryResolveUnauthorizedReverts() public {
+        console2.log("[TEST] testMarketRegistryResolveUnauthorizedReverts");
+        console2.log("[ASSERT] Non-router caller cannot resolve market");
         vm.prank(attacker);
         vm.expectRevert(MarketRegistry.UnauthorizedRouter.selector);
         registry.resolve(marketId, 0, 9000);
     }
 
     function testReportValidatorSetMinConfidenceUnauthorizedReverts() public {
+        console2.log("[TEST] testReportValidatorSetMinConfidenceUnauthorizedReverts");
+        console2.log("[ASSERT] Unauthorized caller cannot change confidence threshold");
         vm.prank(attacker);
         vm.expectRevert();
         reportValidator.setMinConfidence(5000);
     }
 
     function testTreasurySetMarketApprovedUnauthorizedReverts() public {
+        console2.log("[TEST] testTreasurySetMarketApprovedUnauthorizedReverts");
+        console2.log("[ASSERT] Unauthorized caller cannot approve market in treasury");
         vm.prank(attacker);
         vm.expectRevert();
         treasury.setMarketApproved(address(0x1), true);
     }
 
     function testCheckpointWithUnsignedDeltaUserReverts() public {
+        console2.log("[TEST] testCheckpointWithUnsignedDeltaUserReverts");
+        console2.log("[ARRANGE] Checkpoint includes delta for attacker without attacker signature");
         ShadowTypes.Delta[] memory deltas = new ShadowTypes.Delta[](2);
         deltas[0] = ShadowTypes.Delta({user: user, outcomeIndex: 0, sharesDelta: 10, cashDelta: -100});
         deltas[1] = ShadowTypes.Delta({user: attacker, outcomeIndex: 0, sharesDelta: 5, cashDelta: -50});
@@ -116,11 +125,14 @@ contract SecurityHardeningTest is Test {
         bytes[] memory userSigs = new bytes[](1);
         userSigs[0] = _signCheckpoint(cp, userPk);
 
+        console2.log("[ASSERT] submitCheckpoint reverts with DeltaUserNotSigned");
         vm.expectRevert(Errors.DeltaUserNotSigned.selector);
         channel.submitCheckpoint(cp, deltas, opSig, users, userSigs);
     }
 
     function testFinalizeCheckpointAfterTradingCloseWithLastTradeAtReverts() public {
+        console2.log("[TEST] testFinalizeCheckpointAfterTradingCloseWithLastTradeAtReverts");
+        console2.log("[ARRANGE] Market has tradingClose=600, checkpoint lastTradeAt=700");
         vm.warp(500);
         registry.createMarketWithExpiry("Market with close", uint48(500 + 100));
         uint256 mkId = 1;
@@ -146,9 +158,11 @@ contract SecurityHardeningTest is Test {
         bytes[] memory userSigs = new bytes[](1);
         userSigs[0] = _signCheckpoint(cp, userPk);
 
+        console2.log("[ACT] Submit checkpoint and warp past challenge window");
         channel.submitCheckpoint(cp, deltas, _signCheckpoint(cp, operatorPk), users, userSigs);
         vm.warp(block.timestamp + 31 minutes);
 
+        console2.log("[ASSERT] Finalization reverts because lastTradeAt is after market close");
         vm.expectRevert(Errors.CheckpointAfterTradingClose.selector);
         channel.finalizeCheckpoint(mkId, sessionId, deltas);
     }

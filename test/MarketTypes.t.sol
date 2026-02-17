@@ -2,6 +2,7 @@
 pragma solidity 0.8.24;
 
 import {Test} from "forge-std/Test.sol";
+import {console2} from "forge-std/console2.sol";
 import {PoolMarketLegacy} from "../src/core/PoolMarketLegacy.sol";
 import {MarketFactory} from "../src/core/MarketFactory.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
@@ -26,6 +27,8 @@ contract MarketTypesTest is Test {
     }
 
     function testCategoricalMarketCreation() public {
+        console2.log("[TEST] testCategoricalMarketCreation");
+        console2.log("[ARRANGE] Build categorical market report with 3 outcomes");
         string[] memory outcomes = new string[](3);
         outcomes[0] = "A";
         outcomes[1] = "B";
@@ -47,9 +50,11 @@ contract MarketTypesTest is Test {
         });
 
         bytes memory report = bytes.concat(bytes1(0x02), abi.encode(input));
+        console2.log("[ACT] Forwarder submits create-market report");
         vm.prank(forwarder);
         factory.onReport("", report);
 
+        console2.log("[ASSERT] Market stored as categorical and outcome pools accept liquidity");
         assertEq(uint8(market.getMarketType(0)), 1);
         string[] memory stored = market.getCategoricalOutcomes(0);
         assertEq(stored.length, 3);
@@ -64,6 +69,8 @@ contract MarketTypesTest is Test {
     }
 
     function testTimelineMarketCreation() public {
+        console2.log("[TEST] testTimelineMarketCreation");
+        console2.log("[ARRANGE] Build timeline market report with 2 windows");
         uint48[] memory windows = new uint48[](2);
         windows[0] = uint48(block.timestamp + 1000);
         windows[1] = uint48(block.timestamp + 2000);
@@ -84,9 +91,11 @@ contract MarketTypesTest is Test {
         });
 
         bytes memory report = bytes.concat(bytes1(0x02), abi.encode(input));
+        console2.log("[ACT] Forwarder submits create-market report");
         vm.prank(forwarder);
         factory.onReport("", report);
 
+        console2.log("[ASSERT] Market stored as timeline with expected windows");
         assertEq(uint8(market.getMarketType(0)), 2);
         uint48[] memory stored = market.getTimelineWindows(0);
         assertEq(stored.length, 2);

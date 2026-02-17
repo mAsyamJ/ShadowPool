@@ -37,10 +37,10 @@ contract CREPublishReceiver is ReceiverTemplate, EIP712 {
             "PublishFromDraft(bytes32 draftId,bytes32 paramsHash,uint256 chainId,uint256 nonce)"
         );
 
-    MarketDraftBoard public immutable draftBoard;
-    DraftClaimManager public immutable draftClaimManager;
-    MarketPolicy public immutable marketPolicy;
-    IMarketFactoryFromDraft public immutable marketFactory;
+    MarketDraftBoard public immutable DRAFT_BOARD;
+    DraftClaimManager public immutable DRAFT_CLAIM_MANAGER;
+    MarketPolicy public immutable MARKET_POLICY;
+    IMarketFactoryFromDraft public immutable MARKET_FACTORY;
 
     mapping(address => uint256) public publishNonces;
 
@@ -58,10 +58,10 @@ contract CREPublishReceiver is ReceiverTemplate, EIP712 {
         address marketPolicy_,
         address marketFactory_
     ) ReceiverTemplate(forwarderAddress) EIP712("CREPublishReceiver", "1") {
-        draftBoard = MarketDraftBoard(draftBoard_);
-        draftClaimManager = DraftClaimManager(draftClaimManager_);
-        marketPolicy = MarketPolicy(marketPolicy_);
-        marketFactory = IMarketFactoryFromDraft(marketFactory_);
+        DRAFT_BOARD = MarketDraftBoard(draftBoard_);
+        DRAFT_CLAIM_MANAGER = DraftClaimManager(draftClaimManager_);
+        MARKET_POLICY = MarketPolicy(marketPolicy_);
+        MARKET_FACTORY = IMarketFactoryFromDraft(marketFactory_);
     }
 
     /// @notice Process report. Schema 0x04: publish from draft.
@@ -75,44 +75,38 @@ contract CREPublishReceiver is ReceiverTemplate, EIP712 {
             bytes memory claimerSig
         ) = abi.decode(payload, (bytes32, address, IMarketFactoryFromDraft.DraftPublishParams, bytes));
 
-        if (draftBoard.getStatus(draftId) != MarketDraftBoard.DraftStatus.Claimed) {
+        if (DRAFT_BOARD.getStatus(draftId) != MarketDraftBoard.DraftStatus.Claimed) {
             revert DraftNotClaimed();
         }
-        if (draftClaimManager.getClaimer(draftId) != creator) {
+        if (DRAFT_CLAIM_MANAGER.getClaimer(draftId) != creator) {
             revert InvalidCreator();
         }
 
-        bytes32 paramsHash = keccak256(
-            abi.encode(
-                params.question,
-                params.marketType,
-                keccak256(abi.encode(params.outcomes)),
-                keccak256(abi.encode(params.timelineWindows)),
-                params.resolveTime,
-                params.tradingOpen,
-                params.tradingClose
-            )
+        bytes memory encodedParams = abi.encode(
+            params.question,
+            params.marketType,
+            keccak256(abi.encode(params.outcomes)),
+            keccak256(abi.encode(params.timelineWindows)),
+            params.resolveTime,
+            params.tradingOpen,
+            params.tradingClose
         );
+        bytes32 paramsHash;
+        assembly ("memory-safe") {
+            paramsHash := keccak256(add(encodedParams, 0x20), mload(encodedParams))
+        }
 
-        bytes32 structHash = keccak256(
-            abi.encode(
-                PUBLISH_FROM_DRAFT_TYPEHASH,
-                draftId,
-                paramsHash,
-                block.chainid,
-                publishNonces[creator]
-            )
-        );
+        bytes32 structHash = _hashPublishFromDraft(draftId, paramsHash, publishNonces[creator]);
         bytes32 digest = _hashTypedDataV4(structHash);
         address signer = digest.recover(claimerSig);
         if (signer != creator) revert InvalidSignature();
 
         publishNonces[creator]++;
 
-        MarketDraftBoard.Draft memory d = draftBoard.getDraft(draftId);
-        marketPolicy.validateDraftWithOutcomesCount(d, _outcomesCount(params));
+        MarketDraftBoard.Draft memory d = DRAFT_BOARD.getDraft(draftId);
+        MARKET_POLICY.validateDraftWithOutcomesCount(d, _outcomesCount(params));
 
-        uint256 marketId = marketFactory.createFromDraft(draftId, creator, params);
+        uint256 marketId = MARKET_FACTORY.createFromDraft(draftId, creator, params);
 
         emit DraftPublished(draftId, creator, marketId);
     }
@@ -133,15 +127,24 @@ contract CREPublishReceiver is ReceiverTemplate, EIP712 {
         bytes32 paramsHash,
         address signer
     ) external view returns (bytes32) {
-        bytes32 structHash = keccak256(
-            abi.encode(
-                PUBLISH_FROM_DRAFT_TYPEHASH,
-                draftId,
-                paramsHash,
-                block.chainid,
-                publishNonces[signer]
-            )
-        );
+        bytes32 structHash = _hashPublishFromDraft(draftId, paramsHash, publishNonces[signer]);
         return _hashTypedDataV4(structHash);
+    }
+
+    function _hashPublishFromDraft(bytes32 draftId, bytes32 paramsHash, uint256 nonce)
+        internal
+        view
+        returns (bytes32 digest)
+    {
+        bytes32 typeHash = PUBLISH_FROM_DRAFT_TYPEHASH;
+        assembly ("memory-safe") {
+            let ptr := mload(0x40)
+            mstore(ptr, typeHash)
+            mstore(add(ptr, 0x20), draftId)
+            mstore(add(ptr, 0x40), paramsHash)
+            mstore(add(ptr, 0x60), chainid())
+            mstore(add(ptr, 0x80), nonce)
+            digest := keccak256(ptr, 0xa0)
+        }
     }
 }
