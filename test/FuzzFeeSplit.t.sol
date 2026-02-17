@@ -20,7 +20,7 @@ contract FuzzFeeSplitTest is Test {
         feeManager.setCreatorFeeShareBps(1500);
     }
 
-    function testFuzzComputeSplitSumCorrectness(int128 pnlDelta) public {
+    function testFuzzComputeSplitSumCorrectness(int128 pnlDelta) public view {
         console2.log("[TEST] testFuzzComputeSplitSumCorrectness");
         console2.log("[ARRANGE] Keep fuzzed pnlDelta positive and within configured bound");
         vm.assume(pnlDelta > 0);
@@ -31,7 +31,11 @@ contract FuzzFeeSplitTest is Test {
             feeManager.computeSplit(pnlDelta);
 
         uint256 totalFee = protocolFee + lpFee + creatorFee;
+        // casting to 'uint256' is safe because pnlDelta is assumed > 0
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 profit = uint256(int256(pnlDelta));
+        // casting to 'uint256' is safe because netDelta is non-negative when pnlDelta is positive
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 netU = uint256(int256(netDelta));
         uint256 diff = profit > totalFee + netU ? profit - totalFee - netU : totalFee + netU - profit;
         console2.log("[ASSERT] Total fees + net is equal to profit within tiny rounding dust");

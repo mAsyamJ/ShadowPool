@@ -49,8 +49,12 @@ contract FuzzCheckpointTest is Test {
     function testFuzzCheckpointWithBoundedDeltas(uint256 sharesDeltaRaw, uint256 cashDeltaRaw) public {
         console2.log("[TEST] testFuzzCheckpointWithBoundedDeltas");
         console2.log("[ARRANGE] Bound fuzzed shares/cash deltas to safe signed ranges");
+        // casting to 'int128' is safe because sharesDeltaRaw is bounded to [0,100]
+        // forge-lint: disable-next-line(unsafe-typecast)
         int128 sharesDelta = int128(uint128(bound(sharesDeltaRaw, 0, 100)));
         uint256 cashBound = bound(cashDeltaRaw, 0, 2000);
+        // casting to int256/int128 is safe because cashBound in [0,2000] makes (cashBound-1000) fit int128
+        // forge-lint: disable-next-line(unsafe-typecast)
         int128 cashDelta = int128(int256(cashBound) - 1000);
 
         uint256 marketId = 0;

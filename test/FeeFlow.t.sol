@@ -130,8 +130,12 @@ contract FeeFlowTest is Test {
             feeManager.computeSplit(profit);
 
         uint256 totalFee = protocolFee + lpFee + creatorFee;
+        // casting to 'uint256' is safe because profit is a positive int128 literal
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint256 profitU = uint256(int256(profit));
         console2.log("[ASSERT] profit = protocolFee + lpFee + creatorFee + netDelta");
+        // casting to 'uint256' is safe because netDelta is non-negative for positive profit
+        // forge-lint: disable-next-line(unsafe-typecast)
         assertEq(profitU - totalFee, uint256(int256(netDelta)), "protocol+lp+creator+net == profit");
     }
 

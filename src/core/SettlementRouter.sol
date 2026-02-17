@@ -111,6 +111,7 @@ contract SettlementRouter is ISettlementRouter, Ownable2Step {
     /// @notice Finalize the session: checkpoint path (ChannelSettlement) or legacy (SessionFinalizer).
     /// @param payload For checkpoint path: abi.encode(cp, deltas, operatorSig, users, userSigs).
     function finalizeSession(bytes calldata payload) external override onlyOracleCoordinator {
+        // forge-lint: disable-next-line(asm-keccak256)
         bytes32 payloadHash = keccak256(payload);
         if (channelSettlement != address(0)) {
             (

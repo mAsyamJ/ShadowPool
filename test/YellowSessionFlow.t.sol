@@ -97,12 +97,12 @@ contract YellowSessionFlowTest is Test {
         address participant,
         uint256 balance,
         uint256 pk
-    ) internal returns (bytes memory) {
+    ) internal pure returns (bytes memory) {
         bytes32 userHash = keccak256(abi.encode(marketId, sessionId, participant, balance)).toEthSignedMessageHash();
         return _signHash(userHash, pk);
     }
 
-    function _signHash(bytes32 digest, uint256 pk) internal returns (bytes memory) {
+    function _signHash(bytes32 digest, uint256 pk) internal pure returns (bytes memory) {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, digest);
         return abi.encodePacked(r, s, v);
     }
