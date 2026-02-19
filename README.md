@@ -131,26 +131,28 @@ RetroPick is a production-ready prediction market protocol that separates **on-c
 
 ### Verified Contract Addresses (Snowscan)
 
-| Contract | Address |
-|----------|---------|
-| ExecutionLedger | [0xE4d4187d6Ca2c4eA36A05d3eb61a7A79da7F6D25](https://testnet.snowscan.xyz/address/0xe4d4187d6ca2c4ea36a05d3eb61a7a79da7f6d25) |
-| CollateralVault | [0xe1557c8f239752A22278a5c55f0CB28b041D9fcd](https://testnet.snowscan.xyz/address/0xe1557c8f239752a22278a5c55f0cb28b041d9fcd) |
-| MultiAssetVault | [0xf780caB68DE9800fd6b8ee6AEfc0b06A5F3181dB](https://testnet.snowscan.xyz/address/0xf780cab68de9800fd6b8ee6aefc0b06a5f3181db) |
-| ChannelSettlement | [0xa1F7673D2677FB9e48C7a6295DD7cF44F8c0A212](https://testnet.snowscan.xyz/address/0xa1f7673d2677fb9e48c7a6295dd7cf44f8c0a212) |
-| SettlementRouter | [0x789daEE98ac0C8EEe220Dd768f0e2A05C66B983E](https://testnet.snowscan.xyz/address/0x789daee98ac0c8eee220dd768f0e2a05c66b983e) |
-| MarketRegistry | [0xdB8d890B9aE6A40D2838A508F7D2126cb42a36E4](https://testnet.snowscan.xyz/address/0xdb8d890b9ae6a40d2838a508f7d2126cb42a36e4) |
-| FeeManager | [0xB9C04B35C64dc263809DaeA3233de0855b44a82D](https://testnet.snowscan.xyz/address/0xb9c04b35c64dc263809daea3233de0855b44a82d) |
-| FeePool | [0x59d2B7563bC7b80c3EcE9A3E616441e68ca158A6](https://testnet.snowscan.xyz/address/0x59d2b7563bc7b80c3ece9a3e616441e68ca158a6) |
-| TreasuryPool | [0x1723701b8143537e023b9C6165dAeF9A67125d43](https://testnet.snowscan.xyz/address/0x1723701b8143537e023b9c6165daef9a67125d43) |
-| ReportValidator | [0xC6c31b73CE71B42aB45dd017061fcd5D9620a1bE](https://testnet.snowscan.xyz/address/0xc6c31b73ce71b42ab45dd017061fcd5d9620a1be) |
-| OracleCoordinator | [0xA30Fa013c5CAe93C2e75129ceA669635e011d6F8](https://testnet.snowscan.xyz/address/0xa30fa013c5cae93c2e75129cea669635e011d6f8) |
-| CREReceiver | [0xf427BC9e8C7004F394fa06147bf42aad1D516FdF](https://testnet.snowscan.xyz/address/0xf427bc9e8c7004f394fa06147bf42aad1d516fdf) |
-| MarketPolicy | [0x98f399081CbDB2eeB66c8c3c51F5fF592A045396](https://testnet.snowscan.xyz/address/0x98f399081cbdb2eeb66c8c3c51f5ff592a045396) |
-| MarketDraftBoard | [0xa1A31B61748252D7E1f15B2F74de0ce99f1a296f](https://testnet.snowscan.xyz/address/0xa1a31b61748252d7e1f15b2f74de0ce99f1a296f) |
-| DraftClaimManager | [0x1Ccccc54e0cE928b3FC04aA2Ed4E012E7EaAdDe9](https://testnet.snowscan.xyz/address/0x1ccccc54e0ce928b3fc04aa2ed4e012e7eaadde9) |
-| LiquidityVaultFactory | [0xd895dD8547A0fC6214A7ce9D74B49F9b0601C362](https://testnet.snowscan.xyz/address/0xd895dd8547a0fc6214a7ce9d74b49f9b0601c362) |
-| MarketFactory | [0x68D0e961FdFAF031323099a4680847321eFBb7e5](https://testnet.snowscan.xyz/address/0x68d0e961fdfaf031323099a4680847321efbb7e5) |
-| CREPublishReceiver | [0xEF0aebe656c82A6d070f904c0c31EE1B0B81fBB2](https://testnet.snowscan.xyz/address/0xef0aebe656c82a6d070f904c0c31ee1b0b81fbb2) |
+---
+
+| Contract              | Address                                                                                                                                                         |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ExecutionLedger       | [0xE4d4187d6Ca2c4eA36A05d3eb61a7A79da7F6D25](https://testnet.snowtrace.io/address/0xE4d4187d6Ca2c4eA36A05d3eb61a7A79da7F6D25/contract/43113/code?chainid=43113) |
+| CollateralVault       | [0xe1557c8f239752A22278a5c55f0CB28b041D9fcd](https://testnet.snowtrace.io/address/0xe1557c8f239752A22278a5c55f0CB28b041D9fcd/contract/43113/code?chainid=43113) |
+| MultiAssetVault       | [0xf780caB68DE9800fd6b8ee6AEfc0b06A5F3181dB](https://testnet.snowtrace.io/address/0xf780caB68DE9800fd6b8ee6AEfc0b06A5F3181dB/contract/43113/code?chainid=43113) |
+| ChannelSettlement     | [0xa1F7673D2677FB9e48C7a6295DD7cF44F8c0A212](https://testnet.snowtrace.io/address/0xa1F7673D2677FB9e48C7a6295DD7cF44F8c0A212/contract/43113/code?chainid=43113) |
+| SettlementRouter      | [0x789daEE98ac0C8EEe220Dd768f0e2A05C66B983E](https://testnet.snowtrace.io/address/0x789daEE98ac0C8EEe220Dd768f0e2A05C66B983E/contract/43113/code?chainid=43113) |
+| MarketRegistry        | [0xdB8d890B9aE6A40D2838A508F7D2126cb42a36E4](https://testnet.snowtrace.io/address/0xdB8d890B9aE6A40D2838A508F7D2126cb42a36E4/contract/43113/code?chainid=43113) |
+| FeeManager            | [0xB9C04B35C64dc263809DaeA3233de0855b44a82D](https://testnet.snowtrace.io/address/0xB9C04B35C64dc263809DaeA3233de0855b44a82D/contract/43113/code?chainid=43113) |
+| FeePool               | [0x59d2B7563bC7b80c3EcE9A3E616441e68ca158A6](https://testnet.snowtrace.io/address/0x59d2B7563bC7b80c3EcE9A3E616441e68ca158A6/contract/43113/code?chainid=43113) |
+| TreasuryPool          | [0x1723701b8143537e023b9C6165dAeF9A67125d43](https://testnet.snowtrace.io/address/0x1723701b8143537e023b9C6165dAeF9A67125d43/contract/43113/code?chainid=43113) |
+| ReportValidator       | [0xC6c31b73CE71B42aB45dd017061fcd5D9620a1bE](https://testnet.snowtrace.io/address/0xC6c31b73CE71B42aB45dd017061fcd5D9620a1bE/contract/43113/code?chainid=43113) |
+| OracleCoordinator     | [0xA30Fa013c5CAe93C2e75129ceA669635e011d6F8](https://testnet.snowtrace.io/address/0xA30Fa013c5CAe93C2e75129ceA669635e011d6F8/contract/43113/code?chainid=43113) |
+| CREReceiver           | [0xf427BC9e8C7004F394fa06147bf42aad1D516FdF](https://testnet.snowtrace.io/address/0xf427BC9e8C7004F394fa06147bf42aad1D516FdF/contract/43113/code?chainid=43113) |
+| MarketPolicy          | [0x98f399081CbDB2eeB66c8c3c51F5fF592A045396](https://testnet.snowtrace.io/address/0x98f399081CbDB2eeB66c8c3c51F5fF592A045396/contract/43113/code?chainid=43113) |
+| MarketDraftBoard      | [0xa1A31B61748252D7E1f15B2F74de0ce99f1a296f](https://testnet.snowtrace.io/address/0xa1A31B61748252D7E1f15B2F74de0ce99f1a296f/contract/43113/code?chainid=43113) |
+| DraftClaimManager     | [0x1Ccccc54e0cE928b3FC04aA2Ed4E012E7EaAdDe9](https://testnet.snowtrace.io/address/0x1Ccccc54e0cE928b3FC04aA2Ed4E012E7EaAdDe9/contract/43113/code?chainid=43113) |
+| LiquidityVaultFactory | [0xd895dD8547A0fC6214A7ce9D74B49F9b0601C362](https://testnet.snowtrace.io/address/0xd895dD8547A0fC6214A7ce9D74B49F9b0601C362/contract/43113/code?chainid=43113) |
+| MarketFactory         | [0x68D0e961FdFAF031323099a4680847321eFBb7e5](https://testnet.snowtrace.io/address/0x68D0e961FdFAF031323099a4680847321eFBb7e5/contract/43113/code?chainid=43113) |
+| CREPublishReceiver    | [0xEF0aebe656c82A6d070f904c0c31EE1B0B81fBB2](https://testnet.snowtrace.io/address/0xEF0aebe656c82A6d070f904c0c31EE1B0B81fBB2/contract/43113/code?chainid=43113) |
 
 ### Deployment Parameters (Fuji)
 
