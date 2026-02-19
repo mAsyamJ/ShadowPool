@@ -119,13 +119,15 @@ flowchart TB
 
 #### Draft Struct (MarketDraftBoard)
 
+URIs are stored as hashes onchain for gas efficiency. Indexers should read full URIs from the `DraftProposed` event.
+
 ```solidity
 struct Draft {
     bytes32 questionHash;
-    string questionURI;
+    bytes32 questionUriHash;    // keccak256 of URI; use DraftProposed event for full URI
     MarketType marketType;      // 0=Binary, 1=Categorical, 2=Timeline
     bytes32 outcomesHash;
-    string outcomesURI;
+    bytes32 outcomesUriHash;   // keccak256 of URI; use DraftProposed event for full URI
     bytes32 resolveSpecHash;
     uint48 tradingOpen;
     uint48 tradingClose;
@@ -146,7 +148,7 @@ struct Draft {
 
 | Event | Contract | Indexed | Use Case |
 |-------|----------|---------|----------|
-| `DraftProposed(draftId, questionHash, marketType, resolveTime)` | MarketDraftBoard | draftId | New draft for list |
+| `DraftProposed(draftId, questionHash, marketType, resolveTime, questionURI, outcomesURI)` | MarketDraftBoard | draftId | New draft for list; index questionURI and outcomesURI for display |
 | `DraftClaimed(draftId, claimer)` | MarketDraftBoard | draftId, claimer | Draft claimed (legacy) |
 | `DraftClaimedAndSeeded(draftId, claimer, vault, seedAmount, seedShares)` | DraftClaimManager | draftId, claimer, vault | Seeded claim |
 | `DraftPublished(draftId, marketId)` | MarketDraftBoard | draftId, marketId | Draft went live |
@@ -155,7 +157,7 @@ struct Draft {
 
 - Paginate via `draftCount()` and `getDraftIdAt(i)`
 - Show `minSeed` and `settlementAsset` on each card
-- Display `questionURI` and `outcomesURI` (resolve IPFS/HTTP if needed)
+- **URIs**: Read `questionURI` and `outcomesURI` from `DraftProposed` event (indexers). `getDraft` returns only `questionUriHash` and `outcomesUriHash` (bytes32). Resolve IPFS/HTTP as needed for display.
 - Filter by `status` (Proposed, Claimed, Published, etc.)
 
 ---
@@ -592,10 +594,10 @@ From yellowIntegration.md:
 | Field | Type | Description |
 |-------|------|-------------|
 | questionHash | bytes32 | Question hash |
-| questionURI | string | Question URI |
+| questionUriHash | bytes32 | keccak256 of question URI; full URI in DraftProposed event |
 | marketType | MarketType | 0=Binary, 1=Categorical, 2=Timeline |
 | outcomesHash | bytes32 | Outcomes hash |
-| outcomesURI | string | Outcomes URI |
+| outcomesUriHash | bytes32 | keccak256 of outcomes URI; full URI in DraftProposed event |
 | resolveSpecHash | bytes32 | Resolution spec |
 | tradingOpen | uint48 | Trading open time |
 | tradingClose | uint48 | Trading close time |

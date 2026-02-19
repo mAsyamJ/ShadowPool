@@ -179,23 +179,26 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         if (cp.validAfter != 0 && block.timestamp < cp.validAfter) revert Errors.TooEarly();
         if (cp.validBefore != 0 && block.timestamp > cp.validBefore) revert Errors.TooLate();
 
-        if (_recoverCheckpointSigner(cp, operatorSig) != operator) revert Errors.BadOperatorSig();
+        address op = operator;
+        if (_recoverCheckpointSigner(cp, operatorSig) != op) revert Errors.BadOperatorSig();
 
         bytes32 digest = _digestCheckpoint(cp);
-        for (uint256 i = 0; i < users.length; i++) {
+        uint256 usersLen = users.length;
+        for (uint256 i = 0; i < usersLen; i++) {
             if (ECDSA.recover(digest, userSigs[i]) != users[i]) revert Errors.BadUserSig();
         }
 
         // Signer coverage: users[] must be unique and contain every unique delta user
-        for (uint256 i = 0; i < users.length; i++) {
-            for (uint256 j = i + 1; j < users.length; j++) {
+        uint256 deltasLen = deltas.length;
+        for (uint256 i = 0; i < usersLen; i++) {
+            for (uint256 j = i + 1; j < usersLen; j++) {
                 if (users[i] == users[j]) revert Errors.DuplicateUsers();
             }
         }
-        for (uint256 i = 0; i < deltas.length; i++) {
+        for (uint256 i = 0; i < deltasLen; i++) {
             address dUser = deltas[i].user;
             bool found;
-            for (uint256 j = 0; j < users.length; j++) {
+            for (uint256 j = 0; j < usersLen; j++) {
                 if (users[j] == dUser) {
                     found = true;
                     break;
@@ -249,12 +252,15 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         bytes32 dHash = _hashDeltas(deltas);
         if (dHash != p.deltasHash) revert Errors.BadDeltasHash();
 
+        IMarketRegistry mr = marketRegistry;
+        bool hasRegistry = address(mr) != address(0);
+
         // Market lifecycle binding: checkpoint.lastTradeAt must be <= market.tradingClose
-        if (address(marketRegistry) != address(0)) {
-            if (marketRegistry.status(marketId) == IMarketRegistry.Status.Resolved) {
+        if (hasRegistry) {
+            if (mr.status(marketId) == IMarketRegistry.Status.Resolved) {
                 revert Errors.MarketAlreadyResolved();
             }
-            uint48 tradingClose = marketRegistry.getTradingClose(marketId);
+            uint48 tradingClose = mr.getTradingClose(marketId);
             if (tradingClose != 0 && p.lastTradeAt > tradingClose) {
                 revert Errors.CheckpointAfterTradingClose();
             }
@@ -270,14 +276,10 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
             address settlementAsset
         ) = _applyCashDeltasAndFees(marketId, sessionId, deltas);
 
-        address lpVault = address(marketRegistry) != address(0)
-            ? marketRegistry.liquidityVaultByMarketId(marketId)
-            : address(0);
+        address lpVault = hasRegistry ? mr.liquidityVaultByMarketId(marketId) : address(0);
 
         // Solvency invariant: market flagged as LP must have vault bound
-        if (address(marketRegistry) != address(0)
-            && marketRegistry.usesLpVaultByMarketId(marketId)
-            && lpVault == address(0)) {
+        if (hasRegistry && mr.usesLpVaultByMarketId(marketId) && lpVault == address(0)) {
             revert Errors.LiquidityVaultRequired();
         }
 
@@ -324,8 +326,8 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
                 VAULT.transferToFeeCollector(feePool.treasuryPool(), lpFee);
             }
         }
-        if (creatorFee > 0 && address(marketRegistry) != address(0)) {
-            address creator = marketRegistry.getCreator(marketId);
+        if (creatorFee > 0 && hasRegistry) {
+            address creator = mr.getCreator(marketId);
             if (creator != address(0)) {
                 if (address(multiAssetVault) != address(0)) {
                     multiAssetVault.transferAsset(creator, settlementAsset, creatorFee);
@@ -355,22 +357,27 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
             address settlementAsset
         )
     {
-        settlementAsset = address(multiAssetVault) != address(0) && address(marketRegistry) != address(0)
-            ? marketRegistry.getSettlementAsset(marketId)
+        address mav = address(multiAssetVault);
+        IMarketRegistry mr = marketRegistry;
+        FeeManager fm = feeManager;
+
+        settlementAsset = mav != address(0) && address(mr) != address(0)
+            ? mr.getSettlementAsset(marketId)
             : VAULT.token();
 
-        address[] memory users = new address[](deltas.length);
-        int128[] memory cashDeltas = new int128[](deltas.length);
+        uint256 deltasLen = deltas.length;
+        address[] memory users = new address[](deltasLen);
+        int128[] memory cashDeltas = new int128[](deltasLen);
         uint256 count = 0;
         netTraderDelta = 0;
 
-        for (uint256 i = 0; i < deltas.length; i++) {
+        for (uint256 i = 0; i < deltasLen; i++) {
             int128 delta = deltas[i].cashDelta;
             if (delta == 0) continue;
 
             int128 netDelta = delta;
-            if (address(feeManager) != address(0) && delta > 0) {
-                (uint256 pf, uint256 lf, uint256 cf, int128 nd) = feeManager.computeSplit(delta);
+            if (address(fm) != address(0) && delta > 0) {
+                (uint256 pf, uint256 lf, uint256 cf, int128 nd) = fm.computeSplit(delta);
                 protocolFee += pf;
                 lpFee += lf;
                 creatorFee += cf;
@@ -388,7 +395,7 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
                 usersTrimmed[i] = users[i];
                 cashDeltasTrimmed[i] = cashDeltas[i];
             }
-            if (address(multiAssetVault) != address(0)) {
+            if (mav != address(0)) {
                 multiAssetVault.applyCashDeltas(settlementAsset, marketId, sessionId, usersTrimmed, cashDeltasTrimmed);
             } else {
                 VAULT.applyCashDeltas(marketId, sessionId, usersTrimmed, cashDeltasTrimmed);
@@ -414,23 +421,26 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         if (cp.validAfter != 0 && block.timestamp < cp.validAfter) revert Errors.TooEarly();
         if (cp.validBefore != 0 && block.timestamp > cp.validBefore) revert Errors.TooLate();
 
-        if (_recoverCheckpointSigner(cp, operatorSig) != operator) revert Errors.BadOperatorSig();
+        address op = operator;
+        if (_recoverCheckpointSigner(cp, operatorSig) != op) revert Errors.BadOperatorSig();
 
         bytes32 digest = _digestCheckpoint(cp);
-        for (uint256 i = 0; i < users.length; i++) {
+        uint256 usersLen = users.length;
+        for (uint256 i = 0; i < usersLen; i++) {
             if (ECDSA.recover(digest, userSigs[i]) != users[i]) revert Errors.BadUserSig();
         }
 
         // Signer coverage: users[] must be unique and contain every unique delta user
-        for (uint256 i = 0; i < users.length; i++) {
-            for (uint256 j = i + 1; j < users.length; j++) {
+        uint256 deltasLen = deltas.length;
+        for (uint256 i = 0; i < usersLen; i++) {
+            for (uint256 j = i + 1; j < usersLen; j++) {
                 if (users[i] == users[j]) revert Errors.DuplicateUsers();
             }
         }
-        for (uint256 i = 0; i < deltas.length; i++) {
+        for (uint256 i = 0; i < deltasLen; i++) {
             address dUser = deltas[i].user;
             bool found;
-            for (uint256 j = 0; j < users.length; j++) {
+            for (uint256 j = 0; j < usersLen; j++) {
                 if (users[j] == dUser) {
                     found = true;
                     break;

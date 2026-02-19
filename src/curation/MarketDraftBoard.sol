@@ -26,19 +26,19 @@ contract MarketDraftBoard is Ownable, AccessControl {
 
     struct Draft {
         bytes32 questionHash;
-        string questionURI;
-        MarketType marketType;
+        bytes32 questionUriHash;
         bytes32 outcomesHash;
-        string outcomesURI;
+        bytes32 outcomesUriHash;
         bytes32 resolveSpecHash;
         uint48 tradingOpen;
         uint48 tradingClose;
         uint48 resolveTime;
-        address settlementAsset; // 0 = use policy default
-        uint256 minSeed; // e.g. 50e6 for USDC
+        MarketType marketType;
         DraftStatus status;
+        address settlementAsset; // 0 = use policy default
+        uint96 minSeed; // e.g. 50e6 for USDC; packed with settlementAsset
         address creator;
-        uint256 proposedAt;
+        uint48 proposedAt; // packed with creator
     }
 
     mapping(bytes32 => Draft) public drafts;
@@ -47,7 +47,14 @@ contract MarketDraftBoard is Ownable, AccessControl {
 
     address public draftClaimManager;
 
-    event DraftProposed(bytes32 indexed draftId, bytes32 questionHash, MarketType marketType, uint48 resolveTime);
+    event DraftProposed(
+        bytes32 indexed draftId,
+        bytes32 questionHash,
+        MarketType marketType,
+        uint48 resolveTime,
+        string questionURI,
+        string outcomesURI
+    );
     event DraftClaimed(bytes32 indexed draftId, address indexed claimer);
     event DraftPublished(bytes32 indexed draftId, uint256 indexed marketId);
     event DraftCancelled(bytes32 indexed draftId);
@@ -97,6 +104,28 @@ contract MarketDraftBoard is Ownable, AccessControl {
         address settlementAsset_,
         uint256 minSeed_
     ) external onlyRole(AI_ORACLE_ROLE) returns (bytes32 draftId) {
+        draftId = _generateDraftId(questionHash);
+        _storeDraft(
+            draftId,
+            questionHash,
+            questionUri_,
+            marketType_,
+            outcomesHash,
+            outcomesUri_,
+            resolveSpecHash_,
+            tradingOpen_,
+            tradingClose_,
+            resolveTime_,
+            settlementAsset_,
+            minSeed_
+        );
+        _draftIds.push(draftId);
+        _draftIdIndex[draftId] = _draftIds.length - 1;
+        emit DraftProposed(draftId, questionHash, marketType_, resolveTime_, questionUri_, outcomesUri_);
+    }
+
+    /// @notice Generate unique draft ID. Internal to reduce stack pressure in proposeDraft.
+    function _generateDraftId(bytes32 questionHash) internal view returns (bytes32 draftId) {
         draftId = keccak256(
             abi.encodePacked(
                 questionHash,
@@ -108,28 +137,39 @@ contract MarketDraftBoard is Ownable, AccessControl {
         if (drafts[draftId].proposedAt != 0) {
             draftId = keccak256(abi.encodePacked(draftId, block.timestamp));
         }
+    }
 
-        drafts[draftId] = Draft({
-            questionHash: questionHash,
-            questionURI: questionUri_,
-            marketType: marketType_,
-            outcomesHash: outcomesHash,
-            outcomesURI: outcomesUri_,
-            resolveSpecHash: resolveSpecHash_,
-            tradingOpen: tradingOpen_,
-            tradingClose: tradingClose_,
-            resolveTime: resolveTime_,
-            settlementAsset: settlementAsset_,
-            minSeed: minSeed_,
-            status: DraftStatus.Proposed,
-            creator: address(0),
-            proposedAt: block.timestamp
-        });
-
-        _draftIds.push(draftId);
-        _draftIdIndex[draftId] = _draftIds.length - 1;
-
-        emit DraftProposed(draftId, questionHash, marketType_, resolveTime_);
+    /// @notice Store draft fields. Internal to reduce stack pressure in proposeDraft.
+    function _storeDraft(
+        bytes32 draftId,
+        bytes32 questionHash,
+        string calldata questionUri_,
+        MarketType marketType_,
+        bytes32 outcomesHash,
+        string calldata outcomesUri_,
+        bytes32 resolveSpecHash_,
+        uint48 tradingOpen_,
+        uint48 tradingClose_,
+        uint48 resolveTime_,
+        address settlementAsset_,
+        uint256 minSeed_
+    ) internal {
+        Draft storage newDraft = drafts[draftId];
+        newDraft.questionHash = questionHash;
+        newDraft.questionUriHash = keccak256(bytes(questionUri_));
+        newDraft.marketType = marketType_;
+        newDraft.outcomesHash = outcomesHash;
+        newDraft.outcomesUriHash = keccak256(bytes(outcomesUri_));
+        newDraft.resolveSpecHash = resolveSpecHash_;
+        newDraft.tradingOpen = tradingOpen_;
+        newDraft.tradingClose = tradingClose_;
+        newDraft.resolveTime = resolveTime_;
+        newDraft.settlementAsset = settlementAsset_;
+        // forge-lint: disable-next-line(unsafe-typecast) -- minSeed is packed; 2^96 exceeds any realistic seed amount
+        newDraft.minSeed = uint96(minSeed_);
+        newDraft.status = DraftStatus.Proposed;
+        newDraft.creator = address(0);
+        newDraft.proposedAt = uint48(block.timestamp);
     }
 
     /// @notice Set draft to Claimed. Only DraftClaimManager.
