@@ -53,23 +53,41 @@ contract DeployTestnet is Script {
     }
 
     function run() external returns (Deployed memory d) {
-        uint256 pk = vm.envUint("PRIVATE_KEY");
-        address operator = vm.envAddress("OPERATOR");
-        address settlementToken = vm.envAddress("SETTLEMENT_TOKEN");
-        address forwarder = vm.envAddress("CHAINLINK_FORWARDER");
+        // ---- Required env ----
+        address operator = _envAddressReq("OPERATOR");
+        address settlementToken = _envAddressReq("SETTLEMENT_TOKEN");
 
-        uint16 minConfidence = uint16(vm.envUint("MIN_CONFIDENCE"));
-        uint16 protocolFeeBps = uint16(vm.envUint("PROTOCOL_FEE_BPS"));
-        uint16 lpFeeShareBps = uint16(vm.envUint("LP_FEE_SHARE_BPS"));
-        uint16 creatorFeeShareBps = uint16(vm.envUint("CREATOR_FEE_SHARE_BPS"));
-        bool useReceiverAllowlist = vm.envBool("USE_RECEIVER_ALLOWLIST");
-        bool approveRegistryReceiver = vm.envBool("APPROVE_MARKET_REGISTRY_RECEIVER");
+        // ---- Forwarder env (supports literal 0x... OR "$ENV_KEY") ----
+        address forwarder = _resolveForwarder();
 
-        address expectedAuthor = vm.envOr("EXPECTED_WORKFLOW_AUTHOR", address(0));
-        bytes32 expectedWorkflowId = vm.envOr("EXPECTED_WORKFLOW_ID", bytes32(0));
-        string memory expectedWorkflowName = vm.envOr("EXPECTED_WORKFLOW_NAME", string(""));
+        // ---- Validations / configs ----
+        uint16 minConfidence = uint16(_envUintReq("MIN_CONFIDENCE"));
+        uint16 protocolFeeBps = uint16(_envUintReq("PROTOCOL_FEE_BPS"));
+        uint16 lpFeeShareBps = uint16(_envUintReq("LP_FEE_SHARE_BPS"));
+        uint16 creatorFeeShareBps = uint16(_envUintReq("CREATOR_FEE_SHARE_BPS"));
+        bool useReceiverAllowlist = _envBoolOr("USE_RECEIVER_ALLOWLIST", true);
+        bool approveRegistryReceiver = _envBoolOr("APPROVE_MARKET_REGISTRY_RECEIVER", true);
 
-        vm.startBroadcast(pk);
+        // Optional strict metadata checks
+        address expectedAuthor = _envAddressOr("EXPECTED_WORKFLOW_AUTHOR", address(0));
+        bytes32 expectedWorkflowId = _envBytes32Or("EXPECTED_WORKFLOW_ID", bytes32(0));
+        string memory expectedWorkflowName = _envStringOr("EXPECTED_WORKFLOW_NAME", "");
+
+        // ---- Fail-fast sanity checks (prevents mid-script revert surprises) ----
+        require(operator != address(0), "OPERATOR is zero");
+        require(settlementToken != address(0), "SETTLEMENT_TOKEN is zero");
+        // forwarder can be zero if you want pure local testing, but your contracts likely expect non-zero.
+        require(forwarder != address(0), "CHAINLINK_FORWARDER resolved to zero");
+
+        // Share sanity (optional but prevents nonsense config)
+        require(protocolFeeBps <= 10_000, "PROTOCOL_FEE_BPS > 10000");
+        require(lpFeeShareBps <= 10_000, "LP_FEE_SHARE_BPS > 10000");
+        require(creatorFeeShareBps <= 10_000, "CREATOR_FEE_SHARE_BPS > 10000");
+
+        // ---- Broadcast ----
+        // Works with --account (keystore) deployments.
+        // If you want private-key mode, see note below.
+        vm.startBroadcast();
 
         // 1) Execution lane
         d.ledger = new ExecutionLedger(address(0));
@@ -116,7 +134,6 @@ contract DeployTestnet is Script {
         if (approveRegistryReceiver) {
             d.settlementRouter.setMarketReceiverApproved(address(d.marketRegistry), true);
         }
-
         d.marketRegistry.setSettlementRouter(address(d.settlementRouter));
 
         // 4) Curated lane
@@ -135,7 +152,8 @@ contract DeployTestnet is Script {
 
         d.draftBoard.setDraftClaimManager(address(d.draftClaimManager));
         d.draftBoard.grantPublishCaller(address(d.marketFactory));
-        address aiOracle = vm.envOr("AI_ORACLE_ADDRESS", address(0));
+
+        address aiOracle = _envAddressOr("AI_ORACLE_ADDRESS", address(0));
         if (aiOracle != address(0)) {
             d.draftBoard.grantRole(d.draftBoard.AI_ORACLE_ROLE(), aiOracle);
         }
@@ -148,6 +166,7 @@ contract DeployTestnet is Script {
 
         d.marketRegistry.setMarketFactory(address(d.marketFactory));
 
+        // Configure expected workflow metadata only if provided (safe for simulation)
         _configureReceiverTemplate(address(d.creReceiver), expectedAuthor, expectedWorkflowId, expectedWorkflowName);
         _configureReceiverTemplate(address(d.crePublishReceiver), expectedAuthor, expectedWorkflowId, expectedWorkflowName);
         _configureReceiverTemplate(address(d.marketFactory), expectedAuthor, expectedWorkflowId, expectedWorkflowName);
@@ -169,7 +188,8 @@ contract DeployTestnet is Script {
             require(okAuthor, "setExpectedAuthor failed");
         }
         if (expectedWorkflowId != bytes32(0)) {
-            (bool okWorkflowId, ) = receiver.call(abi.encodeWithSignature("setExpectedWorkflowId(bytes32)", expectedWorkflowId));
+            (bool okWorkflowId, ) =
+                receiver.call(abi.encodeWithSignature("setExpectedWorkflowId(bytes32)", expectedWorkflowId));
             require(okWorkflowId, "setExpectedWorkflowId failed");
         }
         if (bytes(expectedWorkflowName).length != 0) {
@@ -213,5 +233,87 @@ contract DeployTestnet is Script {
         console2.log("   MarketFactory (CRE feed market creation): %s", address(d.marketFactory));
         console2.log("");
         console2.log("3. Draft proposals: deployer has AI_ORACLE_ROLE. Set AI_ORACLE_ADDRESS to grant to CRE workflow.");
+    }
+
+    // -------------------------
+    // Env helpers (fail-fast)
+    // -------------------------
+
+    function _envAddressReq(string memory key) internal view returns (address) {
+        try vm.envAddress(key) returns (address v) {
+            return v;
+        } catch {
+            revert(string.concat("Missing/invalid env address: ", key));
+        }
+    }
+
+    function _envAddressOr(string memory key, address fallback_) internal view returns (address) {
+        try vm.envAddress(key) returns (address v) {
+            return v;
+        } catch {
+            return fallback_;
+        }
+    }
+
+    function _envUintReq(string memory key) internal view returns (uint256) {
+        try vm.envUint(key) returns (uint256 v) {
+            return v;
+        } catch {
+            revert(string.concat("Missing/invalid env uint: ", key));
+        }
+    }
+
+    function _envBoolOr(string memory key, bool fallback_) internal view returns (bool) {
+        try vm.envBool(key) returns (bool v) {
+            return v;
+        } catch {
+            return fallback_;
+        }
+    }
+
+    function _envBytes32Or(string memory key, bytes32 fallback_) internal view returns (bytes32) {
+        try vm.envBytes32(key) returns (bytes32 v) {
+            return v;
+        } catch {
+            return fallback_;
+        }
+    }
+
+    function _envStringOr(string memory key, string memory fallback_) internal view returns (string memory) {
+        try vm.envString(key) returns (string memory v) {
+            return v;
+        } catch {
+            return fallback_;
+        }
+    }
+
+    /// @dev Supports:
+    ///  - CHAINLINK_FORWARDER="0xabc...": literal address
+    ///  - CHAINLINK_FORWARDER="$CRE_FORWARDER_SIM_FUJI": indirect env reference
+    function _resolveForwarder() internal view returns (address forwarder) {
+        string memory raw;
+        try vm.envString("CHAINLINK_FORWARDER") returns (string memory v) {
+            raw = v;
+        } catch {
+            revert("Missing env: CHAINLINK_FORWARDER");
+        }
+
+        bytes memory b = bytes(raw);
+        if (b.length == 0) revert("CHAINLINK_FORWARDER is empty");
+
+        if (b[0] == bytes1("$")) {
+            string memory key = _slice(raw, 1, b.length - 1);
+            forwarder = _envAddressReq(key);
+            return forwarder;
+        }
+
+        forwarder = vm.parseAddress(raw);
+    }
+
+    function _slice(string memory s, uint256 start, uint256 len) internal pure returns (string memory) {
+        bytes memory b = bytes(s);
+        bytes memory out = new bytes(len);
+        for (uint256 i = 0; i < len; i++) out[i] = b[start + i];
+        return string(out);
     }
 }
