@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.24;
 
+/// @title DeployTestnet
+/// @notice Deploys the CRE + Nitrolite Yellow checkpoint production stack.
+/// @dev Uses MarketRegistry + ChannelSettlement. Does NOT deploy PoolMarketLegacy or SessionFinalizer.
+///      For relayer: set CHANNEL_SETTLEMENT_ADDRESS and OPERATOR_PRIVATE_KEY in apps/relayer/.env.
+
 import {Script, console2} from "forge-std/Script.sol";
 
 import {ExecutionLedger} from "../src/execution/ExecutionLedger.sol";
@@ -130,6 +135,10 @@ contract DeployTestnet is Script {
 
         d.draftBoard.setDraftClaimManager(address(d.draftClaimManager));
         d.draftBoard.grantPublishCaller(address(d.marketFactory));
+        address aiOracle = vm.envOr("AI_ORACLE_ADDRESS", address(0));
+        if (aiOracle != address(0)) {
+            d.draftBoard.grantRole(d.draftBoard.AI_ORACLE_ROLE(), aiOracle);
+        }
         d.draftClaimManager.setLiquidityVaultFactory(address(d.liquidityVaultFactory));
 
         d.marketFactory.setMarketRegistry(address(d.marketRegistry));
@@ -192,8 +201,17 @@ contract DeployTestnet is Script {
         console2.log("MarketFactory", address(d.marketFactory));
         console2.log("CREPublishReceiver", address(d.crePublishReceiver));
         console2.log("");
-        console2.log("For relayer checkpoint path, set in apps/relayer/.env:");
-        console2.log("  CHANNEL_SETTLEMENT_ADDRESS=%s", address(d.channelSettlement));
-        console2.log("  OPERATOR=<same as OPERATOR env used here>");
+        console2.log("--- Post-deploy checklist ---");
+        console2.log("");
+        console2.log("1. Relayer (apps/relayer/.env):");
+        console2.log("   CHANNEL_SETTLEMENT_ADDRESS=%s", address(d.channelSettlement));
+        console2.log("   OPERATOR_PRIVATE_KEY=<same operator key as OPERATOR env>");
+        console2.log("");
+        console2.log("2. CRE workflows: configure receivers:");
+        console2.log("   CREReceiver (outcome resolution + checkpoint submit): %s", address(d.creReceiver));
+        console2.log("   CREPublishReceiver (publish from draft): %s", address(d.crePublishReceiver));
+        console2.log("   MarketFactory (CRE feed market creation): %s", address(d.marketFactory));
+        console2.log("");
+        console2.log("3. Draft proposals: deployer has AI_ORACLE_ROLE. Set AI_ORACLE_ADDRESS to grant to CRE workflow.");
     }
 }

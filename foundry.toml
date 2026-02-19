@@ -1,13 +1,20 @@
 [profile.default]
 src = "src"
 fuzz = { runs = 10000 }
-
+use_literal_content = true # use source code
 out = "out"
 libs = ["lib"]
 via_ir = true
+
+# Reduce bytecode size for EIP-170 limit (24KB); ChannelSettlement was over limit
+optimizer = true
+optimizer_runs = 200
 remappings = [
     "@openzeppelin/=lib/openzeppelin-contracts/"
 ]
 fs_permissions = [
     { access = "read-write", path = "/home/asyam321/Project/RetroPick/RetroPick/.cursor/debug.log" }
 ]
+
+eth-rpc-url = "https://sepolia.base.org"
+chain_id = 84532
