@@ -37,32 +37,112 @@ RetroPick is a production-ready prediction market protocol that separates **on-c
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│ ORACLE INGRESS (CRE)                                                              │
-│ Chainlink Forwarder → CREReceiver → OracleCoordinator ← ReportValidator           │
-│                                              ↓                                    │
-│                                      SettlementRouter                             │
-│                                    /              \                               │
-│                     settleMarket(0x01)           finalizeSession(Nitrolite 0x03)  │
-│                           ↓                            ↓                          │
-└──────────────────────────┼────────────────────────────┼──────────────────────────┘
-                           ↓                            ↓
-┌──────────────────────────┴────────────────────────────┴──────────────────────────┐
-│ EXECUTION PIPELINE                                                                 │
-│ MarketRegistry ←→ ChannelSettlement ←→ ExecutionLedger                             │
-│       ↑                    ↑                ↑                                      │
-│ MultiAssetVault / CollateralVault    FeeManager → FeePool → TreasuryPool          │
-│       ↑                    ↑                                                      │
-│ LiquidityVault4626 (per-market LP vault)                                           │
-└──────────────────────────────────────────────────────────────────────────────────┘
+### Oracle Ingress (CRE) → Execution Pipeline
 
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│ CURATED PIPELINE                                                                   │
-│ MarketDraftBoard → DraftClaimManager → LiquidityVaultFactory                       │
-│       ↑                      ↑                         ↑                          │
-│ CREPublishReceiver ────────→ MarketFactory ─────────→ MarketRegistry                │
-└──────────────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph ingress["ORACLE INGRESS (CRE)"]
+        Forwarder[Chainlink Forwarder]
+        CRE[CREReceiver]
+        OC[OracleCoordinator]
+        RV[ReportValidator]
+        SR[SettlementRouter]
+        Forwarder --> CRE
+        CRE --> OC
+        RV -.->|validate| OC
+        OC --> SR
+        SR -->|settleMarket 0x01| MR
+        SR -->|finalizeSession Nitrolite 0x03| CS
+    end
+
+    subgraph exec["EXECUTION PIPELINE"]
+        MR[MarketRegistry]
+        CS[ChannelSettlement]
+        EL[ExecutionLedger]
+        MAV[MultiAssetVault]
+        CV[CollateralVault]
+        FM[FeeManager]
+        FP[FeePool]
+        TP[TreasuryPool]
+        LV[LiquidityVault4626]
+
+        MR <--> CS <--> EL
+        MAV --> MR
+        CV --> MR
+        MAV --> CS
+        CV --> CS
+        FM --> FP --> TP
+        FM --> EL
+        LV --> MAV
+        LV --> CV
+    end
+```
+
+### Curated Pipeline
+
+```mermaid
+flowchart LR
+    subgraph curation["CURATED PIPELINE"]
+        CREP[CREPublishReceiver]
+        MF[MarketFactory]
+        MR[MarketRegistry]
+        MDB[MarketDraftBoard]
+        DCM[DraftClaimManager]
+        LVF[LiquidityVaultFactory]
+
+        MDB --> DCM --> LVF
+        CREP --> MF --> MR
+        CREP -.->|publish trigger| MDB
+        MF -.->|from draft| DCM
+        MR -.->|registry| MF
+    end
+```
+
+### Layered View (all pipelines)
+
+```mermaid
+flowchart TB
+    subgraph ext["External"]
+        CL[Chainlink Forwarder]
+    end
+
+    subgraph oracle["Oracle Ingress (CRE)"]
+        CRE[CREReceiver]
+        OC[OracleCoordinator]
+        RV[ReportValidator]
+        SR[SettlementRouter]
+    end
+
+    subgraph exec["Execution Pipeline"]
+        MR[MarketRegistry]
+        CS[ChannelSettlement]
+        EL[ExecutionLedger]
+        MAV[MultiAssetVault / CollateralVault]
+        FM[FeeManager → FeePool → TreasuryPool]
+        LV[LiquidityVault4626]
+    end
+
+    subgraph curated["Curated Pipeline"]
+        CREP[CREPublishReceiver]
+        MF[MarketFactory]
+        MDB[MarketDraftBoard]
+        DCM[DraftClaimManager]
+        LVF[LiquidityVaultFactory]
+    end
+
+    CL --> CRE --> OC
+    RV -.-> OC
+    OC --> SR
+    SR -->|0x01| MR
+    SR -->|0x03| CS
+    MR <--> CS <--> EL
+    MAV --> MR
+    MAV --> CS
+    FM --> EL
+    LV --> MAV
+    CREP --> MF --> MR
+    MDB --> DCM --> LVF
+    MF -.-> DCM
 ```
 
 ### Three Production Lanes
