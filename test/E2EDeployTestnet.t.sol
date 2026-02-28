@@ -12,7 +12,8 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {ShadowTypes} from "../src/libs/ShadowTypes.sol";
 import {Hashing} from "../src/libs/Hashing.sol";
 
-import {ExecutionLedger} from "../src/execution/ExecutionLedger.sol";
+import {OutcomeToken1155} from "../src/execution/OutcomeToken1155.sol";
+import {MarketRiskManager} from "../src/execution/MarketRiskManager.sol";
 import {ChannelSettlement} from "../src/execution/ChannelSettlement.sol";
 import {MultiAssetVault} from "../src/execution/MultiAssetVault.sol";
 import {CollateralVault} from "../src/execution/CollateralVault.sol";
@@ -47,8 +48,9 @@ interface IMarketFactoryFromDraft {
 }
 
 contract E2EDeployTestnetTest is Test {
-    // ---- Deployed stack (mirrors DeployTestnet.s.sol) ----
-    ExecutionLedger ledger;
+    // ---- Deployed stack (mirrors DeployTestnet.s.sol, V3 with OutcomeToken) ----
+    OutcomeToken1155 outcomeToken;
+    MarketRiskManager riskManager;
     ChannelSettlement channelSettlement;
     MultiAssetVault multiAssetVault;
     CollateralVault collateralVault;
@@ -99,16 +101,22 @@ contract E2EDeployTestnetTest is Test {
         _deployFullStack();
     }
 
-    /// @notice Deploys the full production stack as in DeployTestnet.s.sol
+    /// @notice Deploys the full production stack as in DeployTestnet.s.sol (V3 with OutcomeToken)
     function _deployFullStack() internal {
-        // 1) Execution lane
-        ledger = new ExecutionLedger(address(0));
+        // 1) V3 Execution lane: OutcomeToken1155 + MarketRiskManager
+        outcomeToken = new OutcomeToken1155("https://api.retropick.xyz/outcome/{id}.json");
+        riskManager = new MarketRiskManager();
         multiAssetVault = new MultiAssetVault(address(0));
         collateralVault = new CollateralVault(address(settlementToken), address(0));
-        channelSettlement = new ChannelSettlement(address(collateralVault), address(ledger), operator);
-        marketRegistry = new MarketRegistry(address(collateralVault), address(ledger));
+        channelSettlement = new ChannelSettlement(address(collateralVault), address(0), operator);
+        marketRegistry = new MarketRegistry(address(collateralVault), address(0));
 
-        ledger.setChannelSettlement(address(channelSettlement));
+        outcomeToken.setChannelSettlement(address(channelSettlement));
+        outcomeToken.setMarketRegistry(address(marketRegistry));
+        riskManager.setChannelSettlement(address(channelSettlement));
+        channelSettlement.setOutcomeToken(address(outcomeToken));
+        channelSettlement.setRiskManager(address(riskManager));
+        marketRegistry.setOutcomeToken(address(outcomeToken));
         multiAssetVault.setChannelSettlement(address(channelSettlement));
         multiAssetVault.setMarketRegistry(address(marketRegistry));
         collateralVault.setChannelSettlement(address(channelSettlement));
@@ -168,7 +176,10 @@ contract E2EDeployTestnetTest is Test {
         marketFactory.setMarketRegistry(address(marketRegistry));
         marketFactory.setDraftBoard(address(draftBoard));
         marketFactory.setDraftClaimManager(address(draftClaimManager));
+        marketFactory.setMarketPolicy(address(marketPolicy));
+        marketFactory.setRiskManager(address(riskManager));
         marketFactory.setPublishReceiverApproved(address(crePublishReceiver), true);
+        riskManager.setMarketFactory(address(marketFactory));
 
         marketRegistry.setMarketFactory(address(marketFactory));
     }
@@ -243,7 +254,8 @@ contract E2EDeployTestnetTest is Test {
         vm.warp(block.timestamp + 31 minutes);
         channelSettlement.finalizeCheckpoint(marketId, sessionId, deltas);
 
-        assertEq(ledger.positionOf(trader, marketId, 0), 10);
+        uint256 tokenId = outcomeToken.id(marketId, 0);
+        assertEq(outcomeToken.balanceOf(trader, tokenId), 10);
         assertEq(multiAssetVault.freeBalance(trader, address(settlementToken)), 100 ether - 1000);
 
         // ---- 5. Resolve via oracle path (CREReceiver -> Coordinator -> Router -> MarketRegistry) ----
@@ -328,7 +340,8 @@ contract E2EDeployTestnetTest is Test {
         vm.warp(block.timestamp + 31 minutes);
         channelSettlement.finalizeCheckpoint(marketId, sessionId, deltas);
 
-        assertEq(ledger.positionOf(trader, marketId, 0), 10);
+        uint256 tid = outcomeToken.id(marketId, 0);
+        assertEq(outcomeToken.balanceOf(trader, tid), 10);
     }
 
     // -------------------------------------------------------------------------

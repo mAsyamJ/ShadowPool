@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity 0.8.24;
 
-import {Errors} from "../libraries/Errors.sol";
+import {Errors} from "../libs/Errors.sol";
 
 contract AccessManager {
     address public owner;

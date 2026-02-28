@@ -29,4 +29,10 @@ library Errors {
     error MarketAlreadyResolved();
     error CheckpointAfterTradingClose();
     error LiquidityVaultRequired();
+
+    // V3: ERC1155 + Risk Manager
+    error BadCashAccounting();
+    error LpVaultInsolvent(uint256 need, uint256 have);
+    error RiskCapExceeded();
+    error TransferLocked();
 }

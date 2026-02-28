@@ -15,6 +15,9 @@ import {Errors} from "../utils/Errors.sol";
 import {FeeManager} from "../fees/FeeManager.sol";
 import {FeePool} from "../fees/FeePool.sol";
 import {ILiquidityVault4626} from "../interfaces/ILiquidityVault4626.sol";
+import {IOutcomeToken1155} from "../interfaces/IOutcomeToken1155.sol";
+import {IMarketRiskManager} from "../interfaces/IMarketRiskManager.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title ChannelSettlement
 /// @notice Checkpoint-based Yellow session settlement with nonce monotonicity and challenge window.
@@ -26,6 +29,8 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
     ICollateralVault public immutable VAULT;
     IMultiAssetVault public multiAssetVault;
     IExecutionLedger public immutable LEDGER;
+    IOutcomeToken1155 public outcomeToken;
+    IMarketRiskManager public riskManager;
     IMarketRegistry public marketRegistry;
     FeeManager public feeManager;
     FeePool public feePool;
@@ -62,6 +67,8 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
     event FeeManagerUpdated(address indexed previous, address indexed current);
     event FeePoolUpdated(address indexed previous, address indexed current);
     event MultiAssetVaultUpdated(address indexed previous, address indexed current);
+    event OutcomeTokenUpdated(address indexed previous, address indexed current);
+    event RiskManagerUpdated(address indexed previous, address indexed current);
 
     constructor(address vault_, address ledger_, address operator_) Ownable(msg.sender) {
         VAULT = ICollateralVault(vault_);
@@ -96,6 +103,18 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         address previous = address(multiAssetVault);
         multiAssetVault = IMultiAssetVault(mav);
         emit MultiAssetVaultUpdated(previous, mav);
+    }
+
+    function setOutcomeToken(address ot) external onlyOwner {
+        address previous = address(outcomeToken);
+        outcomeToken = IOutcomeToken1155(ot);
+        emit OutcomeTokenUpdated(previous, ot);
+    }
+
+    function setRiskManager(address rm) external onlyOwner {
+        address previous = address(riskManager);
+        riskManager = IMarketRiskManager(rm);
+        emit RiskManagerUpdated(previous, rm);
     }
 
     function _key(uint256 marketId, bytes32 sessionId) internal pure returns (bytes32) {
@@ -266,7 +285,13 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
             }
         }
 
-        LEDGER.applyDeltas(marketId, sessionId, deltas);
+        if (address(outcomeToken) != address(0)) {
+            _applyShareDeltasAs1155(marketId, deltas);
+        } else if (address(LEDGER) != address(0)) {
+            LEDGER.applyDeltas(marketId, sessionId, deltas);
+        } else {
+            revert Errors.InvalidAddress();
+        }
 
         (
             uint256 protocolFee,
@@ -291,6 +316,12 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         // Net counterparty transfer: LP VAULT <-> TradingCashLedger
         if (lpVault != address(0)) {
             if (netTraderDelta > 0) {
+                uint256 need = netTraderDelta.toUint256();
+                uint256 bal = IERC20(settlementAsset).balanceOf(lpVault);
+                if (bal < need) revert Errors.LpVaultInsolvent(need, bal);
+                if (address(riskManager) != address(0)) {
+                    riskManager.reserveLpPayout(marketId, need);
+                }
                 ILiquidityVault4626(lpVault).payToTradingLedger(
                     address(multiAssetVault) != address(0) ? address(multiAssetVault) : address(VAULT),
                     netTraderDelta.toUint256()
@@ -370,11 +401,13 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         int128[] memory cashDeltas = new int128[](deltasLen);
         uint256 count = 0;
         netTraderDelta = 0;
+        int256 rawSum = 0;
 
         for (uint256 i = 0; i < deltasLen; i++) {
             int128 delta = deltas[i].cashDelta;
             if (delta == 0) continue;
 
+            rawSum += delta;
             int128 netDelta = delta;
             if (address(fm) != address(0) && delta > 0) {
                 (uint256 pf, uint256 lf, uint256 cf, int128 nd) = fm.computeSplit(delta);
@@ -388,6 +421,9 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
             cashDeltas[count] = netDelta;
             count++;
         }
+
+        uint256 feesTotal = protocolFee + lpFee + creatorFee;
+        if (rawSum != netTraderDelta + int256(feesTotal)) revert Errors.BadCashAccounting();
         if (count > 0) {
             address[] memory usersTrimmed = new address[](count);
             int128[] memory cashDeltasTrimmed = new int128[](count);
@@ -399,6 +435,19 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
                 multiAssetVault.applyCashDeltas(settlementAsset, marketId, sessionId, usersTrimmed, cashDeltasTrimmed);
             } else {
                 VAULT.applyCashDeltas(marketId, sessionId, usersTrimmed, cashDeltasTrimmed);
+            }
+        }
+    }
+
+    function _applyShareDeltasAs1155(uint256 marketId, ShadowTypes.Delta[] calldata deltas) internal {
+        IOutcomeToken1155 ot = outcomeToken;
+        for (uint256 i = 0; i < deltas.length; i++) {
+            int128 sd = deltas[i].sharesDelta;
+            if (sd == 0) continue;
+            if (sd > 0) {
+                ot.mint(deltas[i].user, marketId, deltas[i].outcomeIndex, uint256(int256(sd)));
+            } else {
+                ot.burn(deltas[i].user, marketId, deltas[i].outcomeIndex, uint256(int256(-sd)));
             }
         }
     }

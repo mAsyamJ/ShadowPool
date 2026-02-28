@@ -18,6 +18,7 @@ contract MarketPolicy is Ownable {
     uint48 public maxDuration;
     uint8 public maxOutcomes;
     uint256 public minCreatorSeed;
+    uint256 public lpExposureMultiplier = 3; // cap = minSeed * multiplier
 
     event AllowedMarketTypesUpdated(uint256 previous, uint256 current);
     event ResolveSpecAllowlistUpdated(bytes32 indexed hash, bool allowed);
@@ -26,6 +27,7 @@ contract MarketPolicy is Ownable {
     event MaxDurationUpdated(uint48 previous, uint48 current);
     event MaxOutcomesUpdated(uint8 previous, uint8 current);
     event MinCreatorSeedUpdated(uint256 previous, uint256 current);
+    event LpExposureMultiplierUpdated(uint256 previous, uint256 current);
 
     error InvalidMarketType();
     error DurationTooShort();
@@ -79,6 +81,12 @@ contract MarketPolicy is Ownable {
         uint256 previous = minCreatorSeed;
         minCreatorSeed = minSeed;
         emit MinCreatorSeedUpdated(previous, minSeed);
+    }
+
+    function setLpExposureMultiplier(uint256 multiplier) external onlyOwner {
+        uint256 previous = lpExposureMultiplier;
+        lpExposureMultiplier = multiplier;
+        emit LpExposureMultiplierUpdated(previous, multiplier);
     }
 
     /// @notice Validate a draft against policy. Reverts if invalid.

@@ -6,6 +6,7 @@ import {SafeCast} from "@openzeppelin/contracts/utils/math/SafeCast.sol";
 import {ICollateralVault} from "../interfaces/ICollateralVault.sol";
 import {IMultiAssetVault} from "../interfaces/IMultiAssetVault.sol";
 import {IExecutionLedger} from "../interfaces/IExecutionLedger.sol";
+import {IOutcomeToken1155} from "../interfaces/IOutcomeToken1155.sol";
 import {IMarketRegistry} from "../interfaces/IMarketRegistry.sol";
 import {Errors} from "../utils/Errors.sol";
 
@@ -68,11 +69,16 @@ contract MarketRegistry is IMarketRegistry, Ownable {
 
     ICollateralVault public immutable VAULT;
     IExecutionLedger public immutable LEDGER;
+    IOutcomeToken1155 public outcomeToken;
 
     constructor(address vault_, address ledger_) Ownable(msg.sender) {
-        if (vault_ == address(0) || ledger_ == address(0)) revert Errors.InvalidAddress();
+        if (vault_ == address(0)) revert Errors.InvalidAddress();
         VAULT = ICollateralVault(vault_);
         LEDGER = IExecutionLedger(ledger_);
+    }
+
+    function setOutcomeToken(address ot) external onlyOwner {
+        outcomeToken = IOutcomeToken1155(ot);
     }
 
     function setMarketFactory(address factory) external onlyOwner {
@@ -502,11 +508,19 @@ contract MarketRegistry is IMarketRegistry, Ownable {
             winningOutcome = typedOutcomeIndex[marketId];
         }
 
-        int256 shares = LEDGER.positionOf(msg.sender, marketId, winningOutcome);
-        if (shares <= 0) revert NothingToRedeem();
+        if (address(outcomeToken) != address(0)) {
+            uint256 tokenId = outcomeToken.id(marketId, winningOutcome);
+            payout = outcomeToken.balanceOf(msg.sender, tokenId);
+            if (payout == 0) revert NothingToRedeem();
+            hasRedeemed[marketId][msg.sender] = true;
+            outcomeToken.burnForRedeem(msg.sender, marketId, winningOutcome, payout);
+        } else {
+            int256 shares = LEDGER.positionOf(msg.sender, marketId, winningOutcome);
+            if (shares <= 0) revert NothingToRedeem();
+            hasRedeemed[marketId][msg.sender] = true;
+            payout = shares.toUint256();
+        }
 
-        hasRedeemed[marketId][msg.sender] = true;
-        payout = shares.toUint256();
         address asset = this.getSettlementAsset(marketId);
         if (address(multiAssetVault) != address(0)) {
             multiAssetVault.redeemPayout(msg.sender, asset, payout);

@@ -7,15 +7,17 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/token/ERC20Mock.sol";
 import {ShadowTypes} from "../src/libs/ShadowTypes.sol";
 import {Hashing} from "../src/libs/Hashing.sol";
 import {CollateralVault} from "../src/execution/CollateralVault.sol";
-import {ExecutionLedger} from "../src/execution/ExecutionLedger.sol";
+import {OutcomeToken1155} from "../src/execution/OutcomeToken1155.sol";
 import {ChannelSettlement} from "../src/execution/ChannelSettlement.sol";
+import {MarketRegistry} from "../src/core/MarketRegistry.sol";
 import {Errors} from "../src/utils/Errors.sol";
 
 contract CheckpointFlowTest is Test {
     ERC20Mock token;
     CollateralVault vault;
-    ExecutionLedger ledger;
+    OutcomeToken1155 outcomeToken;
     ChannelSettlement channel;
+    MarketRegistry marketRegistry;
 
     uint256 operatorPk = 0xA11CE;
     address operator;
@@ -34,11 +36,26 @@ contract CheckpointFlowTest is Test {
         token.mint(user, 100 ether);
 
         vault = new CollateralVault(address(token), address(0));
-        ledger = new ExecutionLedger(address(0));
-        channel = new ChannelSettlement(address(vault), address(ledger), operator);
+        outcomeToken = new OutcomeToken1155("https://api.retropick.xyz/outcome/{id}.json");
+        channel = new ChannelSettlement(address(vault), address(0), operator);
+        marketRegistry = new MarketRegistry(address(vault), address(0));
+
+        vm.startPrank(channel.owner());
+        channel.setOutcomeToken(address(outcomeToken));
+        channel.setMarketRegistry(address(marketRegistry));
+        vm.stopPrank();
+        vm.prank(outcomeToken.owner());
+        outcomeToken.setChannelSettlement(address(channel));
+        vm.prank(outcomeToken.owner());
+        outcomeToken.setMarketRegistry(address(marketRegistry));
+        vm.prank(marketRegistry.owner());
+        marketRegistry.setOutcomeToken(address(outcomeToken));
+        vm.prank(marketRegistry.owner());
+        marketRegistry.setMarketFactory(address(this));
+        vm.prank(marketRegistry.owner());
+        marketRegistry.createMarketForWithExpiryAndAsset("Test", address(this), uint48(block.timestamp + 86400), address(token));
 
         vault.setChannelSettlement(address(channel));
-        ledger.setChannelSettlement(address(channel));
 
         token.approve(address(vault), 1000 ether);
         vault.deposit(100 ether);
@@ -55,7 +72,7 @@ contract CheckpointFlowTest is Test {
             nonce: nonce,
             validAfter: 0,
             validBefore: 0,
-            lastTradeAt: 0,
+            lastTradeAt: uint48(block.timestamp),
             stateHash: keccak256("state"),
             deltasHash: deltasHash,
             riskHash: bytes32(0)
@@ -309,8 +326,9 @@ contract CheckpointFlowTest is Test {
         vm.warp(block.timestamp + 31 minutes);
         channel.finalizeCheckpoint(marketId, sessionId, deltas);
 
-        console2.log("[ASSERT] Ledger position and vault free balance reflect finalized deltas");
-        assertEq(ledger.positionOf(user, marketId, 0), 10);
+        console2.log("[ASSERT] OutcomeToken balance and vault free balance reflect finalized deltas");
+        uint256 tokenId = outcomeToken.id(marketId, 0);
+        assertEq(outcomeToken.balanceOf(user, tokenId), 10);
         assertEq(vault.freeBalance(user), 10 ether - 1000);
     }
 

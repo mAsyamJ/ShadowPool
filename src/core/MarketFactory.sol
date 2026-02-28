@@ -6,6 +6,8 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 import {MessageHashUtils} from "@openzeppelin/contracts/utils/cryptography/MessageHashUtils.sol";
 import {MarketDraftBoard} from "../curation/MarketDraftBoard.sol";
 import {DraftClaimManager} from "../curation/DraftClaimManager.sol";
+import {MarketPolicy} from "../curation/MarketPolicy.sol";
+import {IMarketRiskManager} from "../interfaces/IMarketRiskManager.sol";
 import {ILiquidityVault4626} from "../interfaces/ILiquidityVault4626.sol";
 
 /// @notice Interface for the prediction market.
@@ -201,6 +203,8 @@ contract MarketFactory is ReceiverTemplate {
     IMarketRegistryCreate public marketRegistry;
     MarketDraftBoard public draftBoard;
     DraftClaimManager public draftClaimManager;
+    MarketPolicy public marketPolicy;
+    IMarketRiskManager public riskManager;
     mapping(address => bool) public approvedPublishReceivers;
     mapping(uint256 => bytes32) public draftIdByMarketId;
 
@@ -240,6 +244,16 @@ contract MarketFactory is ReceiverTemplate {
     /// @notice Set DraftClaimManager for liquidity vault binding.
     function setDraftClaimManager(address claimManager) external onlyOwner {
         draftClaimManager = DraftClaimManager(claimManager);
+    }
+
+    /// @notice Set MarketPolicy for lpExposureMultiplier (risk cap).
+    function setMarketPolicy(address policy) external onlyOwner {
+        marketPolicy = MarketPolicy(policy);
+    }
+
+    /// @notice Set MarketRiskManager for LP payout caps.
+    function setRiskManager(address rm) external onlyOwner {
+        riskManager = IMarketRiskManager(rm);
     }
 
     /// @notice Approve or revoke a publish receiver (e.g. CREPublishReceiver).
@@ -329,6 +343,11 @@ contract MarketFactory is ReceiverTemplate {
 
         if (liquidityVault != address(0)) {
             marketRegistry.setLiquidityVault(marketId, liquidityVault);
+            if (address(riskManager) != address(0)) {
+                uint256 mult = address(marketPolicy) != address(0) ? marketPolicy.lpExposureMultiplier() : 1;
+                uint256 cap = d.minSeed * mult;
+                riskManager.setMaxLpPayout(marketId, cap);
+            }
         }
 
         draftBoard.markPublished(draftId, marketId);

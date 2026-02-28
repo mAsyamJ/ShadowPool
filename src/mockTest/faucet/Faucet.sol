@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.28;
+pragma solidity 0.8.24;
 
-import {AccessManager} from "../core/AccessManager.sol";
-import {IERC20Minimal} from "../interfaces/IERC20Minimal.sol";
-import {SafeTransferLib} from "../libs/SafeTransferLib.sol";
-import {Errors} from "../libs/Errors.sol";
+import {AccessManager} from "../../core/AccessManager.sol";
+import {IERC20Minimal} from "../../interfaces/IERC20Minimal.sol";
+import {SafeTransferLib} from "../../libs/SafeTransfer.sol";
+import {Errors} from "../../libs/Errors.sol";
 
 /// @notice Onchain faucet for test stablecoins (rate-limited per user per token).
 contract Faucet is AccessManager {
