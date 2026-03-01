@@ -60,6 +60,7 @@ contract OutcomeTokenFlowTest is Test {
         marketRegistry.createMarketForWithExpiryAndAsset("Test", address(this), uint48(block.timestamp + 86400), address(token));
 
         vault.setChannelSettlement(address(channel));
+        vault.setMarketRegistry(address(marketRegistry));
         token.approve(address(vault), 1000 ether);
         vault.deposit(100 ether);
         vm.prank(user);
@@ -107,7 +108,7 @@ contract OutcomeTokenFlowTest is Test {
         ShadowTypes.Checkpoint memory cp = _makeCheckpoint(1, dHash);
 
         channel.submitCheckpoint(cp, deltas, _signCheckpoint(cp, operatorPk), _toArray(user), _toBytesArray(_signCheckpoint(cp, userPk)));
-        vm.warp(block.timestamp + 31 minutes);
+        vm.warp(block.timestamp + channel.CHALLENGE_WINDOW_SECONDS() + 1);
         channel.finalizeCheckpoint(marketId, sessionId, deltas);
 
         uint256 tokenId = outcomeToken.id(marketId, 0);
@@ -120,7 +121,7 @@ contract OutcomeTokenFlowTest is Test {
         bytes32 dHash1 = Hashing.hashDeltas(deltas1);
         ShadowTypes.Checkpoint memory cp1 = _makeCheckpoint(1, dHash1);
         channel.submitCheckpoint(cp1, deltas1, _signCheckpoint(cp1, operatorPk), _toArray(user), _toBytesArray(_signCheckpoint(cp1, userPk)));
-        vm.warp(block.timestamp + 31 minutes);
+        vm.warp(block.timestamp + channel.CHALLENGE_WINDOW_SECONDS() + 1);
         channel.finalizeCheckpoint(marketId, sessionId, deltas1);
 
         ShadowTypes.Delta[] memory deltas2 = new ShadowTypes.Delta[](1);
@@ -128,7 +129,7 @@ contract OutcomeTokenFlowTest is Test {
         bytes32 dHash2 = Hashing.hashDeltas(deltas2);
         ShadowTypes.Checkpoint memory cp2 = _makeCheckpoint(2, dHash2);
         channel.submitCheckpoint(cp2, deltas2, _signCheckpoint(cp2, operatorPk), _toArray(user), _toBytesArray(_signCheckpoint(cp2, userPk)));
-        vm.warp(block.timestamp + 31 minutes);
+        vm.warp(block.timestamp + channel.CHALLENGE_WINDOW_SECONDS() + 1);
         channel.finalizeCheckpoint(marketId, sessionId, deltas2);
 
         uint256 tokenId = outcomeToken.id(marketId, 0);
@@ -141,7 +142,7 @@ contract OutcomeTokenFlowTest is Test {
         bytes32 dHash = Hashing.hashDeltas(deltas);
         ShadowTypes.Checkpoint memory cp = _makeCheckpoint(1, dHash);
         channel.submitCheckpoint(cp, deltas, _signCheckpoint(cp, operatorPk), _toArray(user), _toBytesArray(_signCheckpoint(cp, userPk)));
-        vm.warp(block.timestamp + 31 minutes);
+        vm.warp(block.timestamp + channel.CHALLENGE_WINDOW_SECONDS() + 1);
         channel.finalizeCheckpoint(marketId, sessionId, deltas);
 
         uint256 tokenId = outcomeToken.id(marketId, 0);
@@ -156,7 +157,7 @@ contract OutcomeTokenFlowTest is Test {
         bytes32 dHash = Hashing.hashDeltas(deltas);
         ShadowTypes.Checkpoint memory cp = _makeCheckpoint(1, dHash);
         channel.submitCheckpoint(cp, deltas, _signCheckpoint(cp, operatorPk), _toArray(user), _toBytesArray(_signCheckpoint(cp, userPk)));
-        vm.warp(block.timestamp + 31 minutes);
+        vm.warp(block.timestamp + channel.CHALLENGE_WINDOW_SECONDS() + 1);
         channel.finalizeCheckpoint(marketId, sessionId, deltas);
 
         vm.prank(marketRegistry.settlementRouter());
@@ -176,7 +177,7 @@ contract OutcomeTokenFlowTest is Test {
         bytes32 dHash = Hashing.hashDeltas(deltas);
         ShadowTypes.Checkpoint memory cp = _makeCheckpoint(1, dHash);
         channel.submitCheckpoint(cp, deltas, _signCheckpoint(cp, operatorPk), _toArray(user), _toBytesArray(_signCheckpoint(cp, userPk)));
-        vm.warp(block.timestamp + 31 minutes);
+        vm.warp(block.timestamp + channel.CHALLENGE_WINDOW_SECONDS() + 1);
         channel.finalizeCheckpoint(marketId, sessionId, deltas);
 
         vm.prank(marketRegistry.settlementRouter());
@@ -197,7 +198,7 @@ contract OutcomeTokenFlowTest is Test {
         bytes32 dHash = Hashing.hashDeltas(deltas);
         ShadowTypes.Checkpoint memory cp = _makeCheckpoint(1, dHash);
         channel.submitCheckpoint(cp, deltas, _signCheckpoint(cp, operatorPk), _toArray(user), _toBytesArray(_signCheckpoint(cp, userPk)));
-        vm.warp(block.timestamp + 31 minutes);
+        vm.warp(block.timestamp + channel.CHALLENGE_WINDOW_SECONDS() + 1);
         vm.expectRevert();
         channel.finalizeCheckpoint(marketId, sessionId, deltas);
     }
