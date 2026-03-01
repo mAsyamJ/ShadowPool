@@ -1,1380 +1,1406 @@
 [
   {
+    "type": "constructor",
     "inputs": [
       {
-        "internalType": "address",
         "name": "vault_",
-        "type": "address"
+        "type": "address",
+        "internalType": "address"
       },
       {
-        "internalType": "address",
         "name": "ledger_",
-        "type": "address"
+        "type": "address",
+        "internalType": "address"
       }
     ],
-    "stateMutability": "nonpayable",
-    "type": "constructor"
+    "stateMutability": "nonpayable"
   },
   {
-    "inputs": [],
-    "name": "AlreadyRedeemed",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "InvalidAddress",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "InvalidMarketTimes",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "InvalidOutcomeCount",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "InvalidOutcomeIndex",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "InvalidTimelineWindows",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "MarketAlreadySettled",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "MarketDoesNotExist",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "MarketNotSettled",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "NothingToRedeem",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "owner",
-        "type": "address"
-      }
-    ],
-    "name": "OwnableInvalidOwner",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "account",
-        "type": "address"
-      }
-    ],
-    "name": "OwnableUnauthorizedAccount",
-    "type": "error"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "int256",
-        "name": "value",
-        "type": "int256"
-      }
-    ],
-    "name": "SafeCastOverflowedIntToUint",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "TransferFailed",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "UnauthorizedFactory",
-    "type": "error"
-  },
-  {
-    "inputs": [],
-    "name": "UnauthorizedRouter",
-    "type": "error"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "indexed": false,
-        "internalType": "address",
-        "name": "creator",
-        "type": "address"
-      }
-    ],
-    "name": "MarketCreated",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "enum IMarketRegistry.MarketType",
-        "name": "marketType",
-        "type": "uint8"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "outcomesCount",
-        "type": "uint256"
-      }
-    ],
-    "name": "MarketCreatedTyped",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint32",
-        "name": "winningOutcome",
-        "type": "uint32"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint16",
-        "name": "confidence",
-        "type": "uint16"
-      }
-    ],
-    "name": "MarketResolved",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "previousOwner",
-        "type": "address"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "newOwner",
-        "type": "address"
-      }
-    ],
-    "name": "OwnershipTransferred",
-    "type": "event"
-  },
-  {
-    "anonymous": false,
-    "inputs": [
-      {
-        "indexed": true,
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      },
-      {
-        "indexed": true,
-        "internalType": "address",
-        "name": "user",
-        "type": "address"
-      },
-      {
-        "indexed": false,
-        "internalType": "uint256",
-        "name": "amount",
-        "type": "uint256"
-      }
-    ],
-    "name": "Redeemed",
-    "type": "event"
-  },
-  {
-    "inputs": [],
+    "type": "function",
     "name": "LEDGER",
+    "inputs": [],
     "outputs": [
       {
-        "internalType": "contract IExecutionLedger",
         "name": "",
-        "type": "address"
+        "type": "address",
+        "internalType": "contract IExecutionLedger"
       }
     ],
-    "stateMutability": "view",
-    "type": "function"
+    "stateMutability": "view"
   },
   {
-    "inputs": [],
+    "type": "function",
     "name": "VAULT",
-    "outputs": [
-      {
-        "internalType": "contract ICollateralVault",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "string[]",
-        "name": "outcomes",
-        "type": "string[]"
-      }
-    ],
-    "name": "createCategoricalMarket",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "string[]",
-        "name": "outcomes",
-        "type": "string[]"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      }
-    ],
-    "name": "createCategoricalMarketFor",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "string[]",
-        "name": "outcomes",
-        "type": "string[]"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      },
-      {
-        "internalType": "uint48",
-        "name": "expiry_",
-        "type": "uint48"
-      }
-    ],
-    "name": "createCategoricalMarketForWithExpiry",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "string[]",
-        "name": "outcomes",
-        "type": "string[]"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      },
-      {
-        "internalType": "uint48",
-        "name": "expiry_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "address",
-        "name": "settlementAsset_",
-        "type": "address"
-      }
-    ],
-    "name": "createCategoricalMarketForWithExpiryAndAsset",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "string[]",
-        "name": "outcomes",
-        "type": "string[]"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      },
-      {
-        "internalType": "uint48",
-        "name": "tradingOpen_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "uint48",
-        "name": "tradingClose_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "uint48",
-        "name": "resolveTime_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "address",
-        "name": "settlementAsset_",
-        "type": "address"
-      }
-    ],
-    "name": "createCategoricalMarketForWithFullParams",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "string[]",
-        "name": "outcomes",
-        "type": "string[]"
-      },
-      {
-        "internalType": "uint48",
-        "name": "expiry_",
-        "type": "uint48"
-      }
-    ],
-    "name": "createCategoricalMarketWithExpiry",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      }
-    ],
-    "name": "createMarket",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      }
-    ],
-    "name": "createMarketFor",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      },
-      {
-        "internalType": "uint48",
-        "name": "expiry_",
-        "type": "uint48"
-      }
-    ],
-    "name": "createMarketForWithExpiry",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      },
-      {
-        "internalType": "uint48",
-        "name": "expiry_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "address",
-        "name": "settlementAsset_",
-        "type": "address"
-      }
-    ],
-    "name": "createMarketForWithExpiryAndAsset",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      },
-      {
-        "internalType": "uint48",
-        "name": "tradingOpen_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "uint48",
-        "name": "tradingClose_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "uint48",
-        "name": "resolveTime_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "address",
-        "name": "settlementAsset_",
-        "type": "address"
-      }
-    ],
-    "name": "createMarketForWithFullParams",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "uint48",
-        "name": "expiry_",
-        "type": "uint48"
-      }
-    ],
-    "name": "createMarketWithExpiry",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "uint48[]",
-        "name": "windows",
-        "type": "uint48[]"
-      }
-    ],
-    "name": "createTimelineMarket",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "uint48[]",
-        "name": "windows",
-        "type": "uint48[]"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      }
-    ],
-    "name": "createTimelineMarketFor",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "uint48[]",
-        "name": "windows",
-        "type": "uint48[]"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      },
-      {
-        "internalType": "uint48",
-        "name": "expiry_",
-        "type": "uint48"
-      }
-    ],
-    "name": "createTimelineMarketForWithExpiry",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "uint48[]",
-        "name": "windows",
-        "type": "uint48[]"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      },
-      {
-        "internalType": "uint48",
-        "name": "expiry_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "address",
-        "name": "settlementAsset_",
-        "type": "address"
-      }
-    ],
-    "name": "createTimelineMarketForWithExpiryAndAsset",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "uint48[]",
-        "name": "windows",
-        "type": "uint48[]"
-      },
-      {
-        "internalType": "address",
-        "name": "requestedBy",
-        "type": "address"
-      },
-      {
-        "internalType": "uint48",
-        "name": "tradingOpen_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "uint48",
-        "name": "tradingClose_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "uint48",
-        "name": "resolveTime_",
-        "type": "uint48"
-      },
-      {
-        "internalType": "address",
-        "name": "settlementAsset_",
-        "type": "address"
-      }
-    ],
-    "name": "createTimelineMarketForWithFullParams",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "string",
-        "name": "question",
-        "type": "string"
-      },
-      {
-        "internalType": "uint48[]",
-        "name": "windows",
-        "type": "uint48[]"
-      },
-      {
-        "internalType": "uint48",
-        "name": "expiry_",
-        "type": "uint48"
-      }
-    ],
-    "name": "createTimelineMarketWithExpiry",
-    "outputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
     "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract ICollateralVault"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "createCategoricalMarket",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "outcomes",
+        "type": "string[]",
+        "internalType": "string[]"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createCategoricalMarketFor",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "outcomes",
+        "type": "string[]",
+        "internalType": "string[]"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createCategoricalMarketForWithExpiry",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "outcomes",
+        "type": "string[]",
+        "internalType": "string[]"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "expiry_",
+        "type": "uint48",
+        "internalType": "uint48"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createCategoricalMarketForWithExpiryAndAsset",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "outcomes",
+        "type": "string[]",
+        "internalType": "string[]"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "expiry_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "settlementAsset_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createCategoricalMarketForWithFullParams",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "outcomes",
+        "type": "string[]",
+        "internalType": "string[]"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tradingOpen_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "tradingClose_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "resolveTime_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "settlementAsset_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createCategoricalMarketWithExpiry",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "outcomes",
+        "type": "string[]",
+        "internalType": "string[]"
+      },
+      {
+        "name": "expiry_",
+        "type": "uint48",
+        "internalType": "uint48"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createMarket",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createMarketFor",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createMarketForWithExpiry",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "expiry_",
+        "type": "uint48",
+        "internalType": "uint48"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createMarketForWithExpiryAndAsset",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "expiry_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "settlementAsset_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createMarketForWithFullParams",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tradingOpen_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "tradingClose_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "resolveTime_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "settlementAsset_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createMarketWithExpiry",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "expiry_",
+        "type": "uint48",
+        "internalType": "uint48"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createTimelineMarket",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "windows",
+        "type": "uint48[]",
+        "internalType": "uint48[]"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createTimelineMarketFor",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "windows",
+        "type": "uint48[]",
+        "internalType": "uint48[]"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createTimelineMarketForWithExpiry",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "windows",
+        "type": "uint48[]",
+        "internalType": "uint48[]"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "expiry_",
+        "type": "uint48",
+        "internalType": "uint48"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createTimelineMarketForWithExpiryAndAsset",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "windows",
+        "type": "uint48[]",
+        "internalType": "uint48[]"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "expiry_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "settlementAsset_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createTimelineMarketForWithFullParams",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "windows",
+        "type": "uint48[]",
+        "internalType": "uint48[]"
+      },
+      {
+        "name": "requestedBy",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "tradingOpen_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "tradingClose_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "resolveTime_",
+        "type": "uint48",
+        "internalType": "uint48"
+      },
+      {
+        "name": "settlementAsset_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createTimelineMarketWithExpiry",
+    "inputs": [
+      {
+        "name": "question",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "windows",
+        "type": "uint48[]",
+        "internalType": "uint48[]"
+      },
+      {
+        "name": "expiry_",
+        "type": "uint48",
+        "internalType": "uint48"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "defaultSettlementAsset",
+    "inputs": [],
     "outputs": [
       {
-        "internalType": "address",
         "name": "",
-        "type": "address"
+        "type": "address",
+        "internalType": "address"
       }
     ],
-    "stateMutability": "view",
-    "type": "function"
+    "stateMutability": "view"
   },
   {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
+    "type": "function",
     "name": "freeze",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
     "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
+    "stateMutability": "nonpayable"
   },
   {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
+    "type": "function",
     "name": "getCategoricalOutcomes",
-    "outputs": [
-      {
-        "internalType": "string[]",
-        "name": "",
-        "type": "string[]"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
-        "internalType": "uint256",
         "name": "marketId",
-        "type": "uint256"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "string[]",
+        "internalType": "string[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getCreator",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
-        "internalType": "uint256",
         "name": "marketId",
-        "type": "uint256"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
-    "name": "getMarket",
     "outputs": [
       {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getMarket",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct MarketRegistry.Market",
         "components": [
           {
-            "internalType": "address",
             "name": "creator",
-            "type": "address"
+            "type": "address",
+            "internalType": "address"
           },
           {
-            "internalType": "uint48",
             "name": "createdAt",
-            "type": "uint48"
+            "type": "uint48",
+            "internalType": "uint48"
           },
           {
-            "internalType": "uint48",
             "name": "expiry",
-            "type": "uint48"
+            "type": "uint48",
+            "internalType": "uint48"
           },
           {
-            "internalType": "uint48",
             "name": "tradingOpen",
-            "type": "uint48"
+            "type": "uint48",
+            "internalType": "uint48"
           },
           {
-            "internalType": "uint48",
             "name": "tradingClose",
-            "type": "uint48"
+            "type": "uint48",
+            "internalType": "uint48"
           },
           {
-            "internalType": "uint48",
             "name": "resolveTime",
-            "type": "uint48"
+            "type": "uint48",
+            "internalType": "uint48"
           },
           {
-            "internalType": "uint48",
             "name": "settledAt",
-            "type": "uint48"
+            "type": "uint48",
+            "internalType": "uint48"
           },
           {
-            "internalType": "bool",
             "name": "settled",
-            "type": "bool"
+            "type": "bool",
+            "internalType": "bool"
           },
           {
-            "internalType": "bool",
             "name": "frozen",
-            "type": "bool"
+            "type": "bool",
+            "internalType": "bool"
           },
           {
-            "internalType": "uint16",
             "name": "confidence",
-            "type": "uint16"
+            "type": "uint16",
+            "internalType": "uint16"
           },
           {
-            "internalType": "enum MarketRegistry.Prediction",
             "name": "outcome",
-            "type": "uint8"
+            "type": "uint8",
+            "internalType": "enum MarketRegistry.Prediction"
           },
           {
-            "internalType": "string",
             "name": "question",
-            "type": "string"
+            "type": "string",
+            "internalType": "string"
           }
-        ],
-        "internalType": "struct MarketRegistry.Market",
-        "name": "",
-        "type": "tuple"
+        ]
       }
     ],
-    "stateMutability": "view",
-    "type": "function"
+    "stateMutability": "view"
   },
   {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
+    "type": "function",
     "name": "getSettlementAsset",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
-        "internalType": "uint256",
         "name": "marketId",
-        "type": "uint256"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getTimelineWindows",
-    "outputs": [
-      {
-        "internalType": "uint48[]",
-        "name": "",
-        "type": "uint48[]"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
-        "internalType": "uint256",
         "name": "marketId",
-        "type": "uint256"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint48[]",
+        "internalType": "uint48[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "getTradingClose",
-    "outputs": [
-      {
-        "internalType": "uint48",
-        "name": "",
-        "type": "uint48"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint48",
+        "internalType": "uint48"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "liquidityVaultByMarketId",
-    "outputs": [
+    "inputs": [
       {
-        "internalType": "address",
         "name": "",
-        "type": "address"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
-    "stateMutability": "view",
-    "type": "function"
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
-    "inputs": [],
+    "type": "function",
     "name": "marketFactory",
+    "inputs": [],
     "outputs": [
       {
-        "internalType": "address",
         "name": "",
-        "type": "address"
+        "type": "address",
+        "internalType": "address"
       }
     ],
-    "stateMutability": "view",
-    "type": "function"
+    "stateMutability": "view"
   },
   {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
+    "type": "function",
     "name": "marketType",
-    "outputs": [
-      {
-        "internalType": "enum IMarketRegistry.MarketType",
-        "name": "",
-        "type": "uint8"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "enum IMarketRegistry.MarketType"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "marketTypeById",
-    "outputs": [
+    "inputs": [
       {
-        "internalType": "enum IMarketRegistry.MarketType",
         "name": "",
-        "type": "uint8"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
-    "stateMutability": "view",
-    "type": "function"
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "enum IMarketRegistry.MarketType"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
-    "inputs": [],
+    "type": "function",
     "name": "multiAssetVault",
+    "inputs": [],
     "outputs": [
       {
-        "internalType": "contract IMultiAssetVault",
         "name": "",
-        "type": "address"
+        "type": "address",
+        "internalType": "contract IMultiAssetVault"
       }
     ],
-    "stateMutability": "view",
-    "type": "function"
+    "stateMutability": "view"
   },
   {
-    "inputs": [
-      {
-        "internalType": "bytes",
-        "name": "",
-        "type": "bytes"
-      },
-      {
-        "internalType": "bytes",
-        "name": "report",
-        "type": "bytes"
-      }
-    ],
+    "type": "function",
     "name": "onReport",
+    "inputs": [
+      {
+        "name": "",
+        "type": "bytes",
+        "internalType": "bytes"
+      },
+      {
+        "name": "report",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
     "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
+    "stateMutability": "nonpayable"
   },
   {
+    "type": "function",
+    "name": "outcomeToken",
     "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IOutcomeToken1155"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "owner",
+    "inputs": [],
     "outputs": [
       {
-        "internalType": "address",
         "name": "",
-        "type": "address"
+        "type": "address",
+        "internalType": "address"
       }
     ],
-    "stateMutability": "view",
-    "type": "function"
+    "stateMutability": "view"
   },
   {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
+    "type": "function",
     "name": "redeem",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
     "outputs": [
       {
-        "internalType": "uint256",
         "name": "payout",
-        "type": "uint256"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
-    "stateMutability": "nonpayable",
-    "type": "function"
+    "stateMutability": "nonpayable"
   },
   {
-    "inputs": [],
+    "type": "function",
     "name": "renounceOwnership",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      },
-      {
-        "internalType": "uint32",
-        "name": "winningOutcome",
-        "type": "uint32"
-      },
-      {
-        "internalType": "uint16",
-        "name": "confidence",
-        "type": "uint16"
-      }
-    ],
-    "name": "resolve",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "asset",
-        "type": "address"
-      }
-    ],
-    "name": "setDefaultSettlementAsset",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      },
-      {
-        "internalType": "address",
-        "name": "vaultAddr",
-        "type": "address"
-      }
-    ],
-    "name": "setLiquidityVault",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "factory",
-        "type": "address"
-      }
-    ],
-    "name": "setMarketFactory",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "vault_",
-        "type": "address"
-      }
-    ],
-    "name": "setMultiAssetVault",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "router",
-        "type": "address"
-      }
-    ],
-    "name": "setSettlementRouter",
-    "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
-      }
-    ],
-    "name": "settlementAssetByMarketId",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [],
-    "name": "settlementRouter",
-    "outputs": [
-      {
-        "internalType": "address",
-        "name": "",
-        "type": "address"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "uint256",
-        "name": "marketId",
-        "type": "uint256"
-      }
-    ],
-    "name": "status",
-    "outputs": [
-      {
-        "internalType": "enum IMarketRegistry.Status",
-        "name": "",
-        "type": "uint8"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
-    "inputs": [
-      {
-        "internalType": "address",
-        "name": "newOwner",
-        "type": "address"
-      }
-    ],
-    "name": "transferOwnership",
     "outputs": [],
-    "stateMutability": "nonpayable",
-    "type": "function"
+    "stateMutability": "nonpayable"
   },
   {
+    "type": "function",
+    "name": "resolve",
     "inputs": [
       {
-        "internalType": "uint256",
-        "name": "",
-        "type": "uint256"
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "winningOutcome",
+        "type": "uint32",
+        "internalType": "uint32"
+      },
+      {
+        "name": "confidence",
+        "type": "uint16",
+        "internalType": "uint16"
       }
     ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setDefaultSettlementAsset",
+    "inputs": [
+      {
+        "name": "asset",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setLiquidityVault",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "vaultAddr",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setMarketFactory",
+    "inputs": [
+      {
+        "name": "factory",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setMultiAssetVault",
+    "inputs": [
+      {
+        "name": "vault_",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setOutcomeToken",
+    "inputs": [
+      {
+        "name": "ot",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "setSettlementRouter",
+    "inputs": [
+      {
+        "name": "router",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "settlementAssetByMarketId",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "settlementRouter",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "status",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "enum IMarketRegistry.Status"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "transferOwnership",
+    "inputs": [
+      {
+        "name": "newOwner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "typedOutcomeIndex",
-    "outputs": [
-      {
-        "internalType": "uint32",
-        "name": "",
-        "type": "uint32"
-      }
-    ],
-    "stateMutability": "view",
-    "type": "function"
-  },
-  {
     "inputs": [
       {
-        "internalType": "uint256",
         "name": "",
-        "type": "uint256"
+        "type": "uint256",
+        "internalType": "uint256"
       }
     ],
-    "name": "usesLpVaultByMarketId",
     "outputs": [
       {
-        "internalType": "bool",
         "name": "",
-        "type": "bool"
+        "type": "uint32",
+        "internalType": "uint32"
       }
     ],
-    "stateMutability": "view",
-    "type": "function"
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "usesLpVaultByMarketId",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "event",
+    "name": "MarketCreated",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "question",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "creator",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MarketCreatedTyped",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "marketType",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "enum IMarketRegistry.MarketType"
+      },
+      {
+        "name": "outcomesCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "MarketResolved",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "winningOutcome",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "confidence",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OwnershipTransferred",
+    "inputs": [
+      {
+        "name": "previousOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newOwner",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Redeemed",
+    "inputs": [
+      {
+        "name": "marketId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "user",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "AlreadyRedeemed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidAddress",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidMarketTimes",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidOutcomeCount",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidOutcomeIndex",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidTimelineWindows",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "MarketAlreadySettled",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "MarketDoesNotExist",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "MarketNotSettled",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NothingToRedeem",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OwnableInvalidOwner",
+    "inputs": [
+      {
+        "name": "owner",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "OwnableUnauthorizedAccount",
+    "inputs": [
+      {
+        "name": "account",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "SafeCastOverflowedIntToUint",
+    "inputs": [
+      {
+        "name": "value",
+        "type": "int256",
+        "internalType": "int256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "TransferFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UnauthorizedFactory",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "UnauthorizedRouter",
+    "inputs": []
   }
 ]

@@ -1,28 +1,28 @@
-# ExecutionLedger – Frontend Integration
+# ExecutionLedger – Frontend Integration (Deprecated for V3)
 
-Last updated: 2026-02-20  
+Last updated: 2026-03-01  
 ABI: `ExecutionLedger.json`  
 Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartContract.md)
 
 ---
 
-## 1. Contract Purpose
+## Deprecation Notice
+
+**V3 deployments use `OutcomeToken1155` for position tracking.** `ExecutionLedger` is deprecated for the primary production path. Use [OutcomeToken1155.md](OutcomeToken1155.md) instead.
+
+**For position display:** Use `OutcomeToken1155.balanceOf(user, id(marketId, outcomeIndex))` where `id = outcomeToken.id(marketId, outcomeIndex)`.
+
+**Legacy deployments** (e.g. DeployTestnet) may still use ExecutionLedger. This doc is retained for backward compatibility.
+
+---
+
+## 1. Contract Purpose (Legacy)
 
 `ExecutionLedger` stores share positions per user, market, and outcome. Only `ChannelSettlement` can apply deltas. The frontend reads positions for portfolio display and redeem eligibility.
 
 ---
 
-## 2. Frontend Relevance
-
-| Feature | User Role | Use Case |
-|--------|-----------|----------|
-| Position display | Trader | Shares per outcome per market |
-| Redeem eligibility | Trader | `positionOf(user, marketId, winningOutcome) > 0` |
-| Portfolio | Trader | Aggregated positions across markets |
-
----
-
-## 3. Read Methods (Frontend)
+## 2. Read Methods (Legacy)
 
 | Method | Params | Returns | Use Case |
 |--------|--------|---------|----------|
@@ -32,43 +32,8 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 
 ---
 
-## 4. Write Methods (Frontend)
+## 3. References
 
-None. `applyDeltas` is called only by `ChannelSettlement` during checkpoint finalization.
-
----
-
-## 5. Events
-
-| Event | Indexed Params | Use Case |
-|-------|----------------|----------|
-| `DeltasApplied` | `marketId`, `sessionId` | Position changed; refresh after checkpoint finalize |
-| `ChannelSettlementUpdated` | `previous`, `current` | Admin |
-| `OwnershipTransferred` | `previousOwner`, `newOwner` | Admin |
-
----
-
-## 6. Errors
-
-| Error | User-Friendly Message |
-|-------|------------------------|
-| `NegativePosition` | Invalid position state |
-| `OnlyChannelSettlement` | Internal; not user-facing |
-| `InvalidAddress` | Invalid address |
-| `OwnableUnauthorizedAccount` | Unauthorized |
-
----
-
-## 7. Integration Notes
-
-- Show free vs locked; `positionOf` is shares only.
-- After `CheckpointFinalized`, refresh `positionOf` for affected users.
-- **Deployment config key**: `ExecutionLedger`
-
----
-
-## 8. References
-
-- [MarketRegistry.md](MarketRegistry.md) — Redeem uses `positionOf`
+- [OutcomeToken1155.md](OutcomeToken1155.md) — **Use this for V3**
+- [MarketRegistry.md](MarketRegistry.md) — Redeem
 - [ChannelSettlement.md](ChannelSettlement.md) — Checkpoint finalization
-- [AppFlow.md](AppFlow.md) — Trading flow

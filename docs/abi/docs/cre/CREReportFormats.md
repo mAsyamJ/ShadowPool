@@ -1,6 +1,6 @@
 # CRE Report Formats
 
-**Last updated:** 2026-02-20  
+**Last updated:** 2026-03-01  
 **Context:** [CREOverview.md](CREOverview.md) | [CurrentSmartContract.md](../CurrentSmartContract.md)
 
 ---
@@ -25,9 +25,11 @@ abi.encode(address market, uint256 marketId, uint8 outcomeIndex, uint16 confiden
 
 **Flow:** `CREReceiver` → `OracleCoordinator.submitResult` → `ReportValidator.validate` → `SettlementRouter.settleMarket` → `MarketRegistry.onReport(0x01 || abi.encode(...))`
 
+**Error conditions:** `InvalidConfidence` if ReportValidator rejects confidence; `Unauthorized` if market not in allowlist when `useReceiverAllowlist` is true.
+
 ---
 
-### 1.2 Session Report (Nitrolite Yellow Checkpoint) — Prefix `0x03`
+### 1.2 Session Report (Checkpoint) — Prefix `0x03`
 
 Used for checkpoint settlement. `report.length > 0 && report[0] == 0x03` triggers this path. Payload is `report[1:]`.
 
@@ -56,10 +58,12 @@ Used for checkpoint settlement. `report.length > 0 && report[0] == 0x03` trigger
 |-------|------|-------------|
 | `user` | address | Affected user |
 | `outcomeIndex` | uint32 | Outcome (0 = Yes for binary) |
-| `sharesDelta` | int128 | Change in ExecutionLedger position |
+| `sharesDelta` | int128 | Change in OutcomeToken1155 position (V3: drives mint/burn) |
 | `cashDelta` | int128 | Change in vault balance (negative = spend) |
 
 **Flow:** `CREReceiver` → `OracleCoordinator.submitSession` → `SettlementRouter.finalizeSession` → `ChannelSettlement.submitCheckpointFromPayload`
+
+**Error conditions:** `BadDeltasHash`, `BadOperatorSig`, `BadUserSig`, `DeltaUserNotSigned`, `DuplicateUsers`, `NonceNotIncreasing`, `TooManyDeltas`, `TooManyUsers`, `SigLenMismatch`, `TooEarly`, `TooLate`. See [CheckpointEIP712.md](../relayer/CheckpointEIP712.md) for full EIP-712 spec.
 
 ---
 
@@ -89,13 +93,15 @@ struct DraftPublishParams {
 
 **Flow:** `CREPublishReceiver.onReport` → verifies EIP-712 `PublishFromDraft` signature → `MarketFactory.createFromDraft`
 
+**Error conditions:** `DraftNotClaimed`, `InvalidCreator`, `InvalidSignature`.
+
 ---
 
 ## 3. Report Routing Summary
 
 | Receiver | Prefix | Payload | Action |
 |----------|--------|---------|--------|
-| CREReceiver | `0x03` | Session payload | ChannelSettlement (Nitrolite Yellow) |
+| CREReceiver | `0x03` | Session payload | ChannelSettlement (checkpoint) |
 | CREReceiver | (default) | Outcome | MarketRegistry / PoolMarketLegacy |
 | CREPublishReceiver | `0x04` (optional) | Publish params + sig | MarketFactory.createFromDraft |
 
@@ -103,6 +109,7 @@ struct DraftPublishParams {
 
 ## 4. References
 
-- [CREReceiver.sol](../../../src/oracle/CREReceiver.sol) — lines 31–41
-- [CREPublishReceiver.sol](../../../src/curation/CREPublishReceiver.sol) — lines 68–76
-- [SettlementRouter.sol](../../../src/core/SettlementRouter.sol) — `finalizeSession` payload decode
+- [CheckpointEIP712.md](../relayer/CheckpointEIP712.md) — Full EIP-712 spec for Checkpoint/Delta
+- [CREReceiver.sol](../../../../src/oracle/CREReceiver.sol) — lines 31–41
+- [CREPublishReceiver.sol](../../../../src/curation/CREPublishReceiver.sol) — lines 68–76
+- [SettlementRouter.sol](../../../../src/core/SettlementRouter.sol) — `finalizeSession` payload decode

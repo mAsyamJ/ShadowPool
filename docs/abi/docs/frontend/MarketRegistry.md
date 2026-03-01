@@ -1,6 +1,6 @@
 # MarketRegistry – Frontend Integration
 
-Last updated: 2026-02-20  
+Last updated: 2026-03-01  
 ABI: `MarketRegistry.json`  
 Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartContract.md)
 
@@ -98,13 +98,15 @@ All other write methods (`create*`, `resolve`, `setLiquidityVault`, etc.) are ca
 - **Market list**: No `marketCount`. Use event indexer, subgraph, or backend API.
 - **Redeem**: One-shot per (marketId, user). Track `Redeemed` events for `hasRedeemed`.
 - **Winning outcome**: Binary uses `market.outcome`; typed uses `typedOutcomeIndex(marketId)`.
+- **V3 redeem**: Uses `OutcomeToken1155.burnForRedeem`; frontend checks `OutcomeToken1155.balanceOf(user, id(marketId, winningOutcome))` for eligibility.
 - **Deployment config key**: `MarketRegistry`
 
 ---
 
 ## 8. References
 
-- [ExecutionLedger.md](ExecutionLedger.md) — `positionOf` for redeem check
+- [OutcomeToken1155.md](OutcomeToken1155.md) — Position/redeem check (V3)
+- [MarketRiskManager.md](MarketRiskManager.md) — LP risk cap
 - [CollateralVault.md](CollateralVault.md) / [MultiAssetVault.md](MultiAssetVault.md) — Payout source
 - [MarketFactory.md](MarketFactory.md) — `draftIdByMarketId`
 - [AppFlow.md](AppFlow.md) — Trader flow

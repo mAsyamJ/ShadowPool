@@ -1,7 +1,7 @@
 # Chainlink CRE Integration Overview
 
-**Last updated:** 2026-02-20  
-**Context:** [CurrentSmartContract.md](../CurrentSmartContract.md) | [e2eAvalanceFujiTest.md](../../../e2e/e2eAvalanceFujiTest.md)
+**Last updated:** 2026-03-01  
+**Context:** [CurrentSmartContract.md](../CurrentSmartContract.md) | [CREPipelineDiagram.md](CREPipelineDiagram.md)
 
 ---
 
@@ -45,7 +45,7 @@ Key properties:
 
 | Report Prefix | Type | Action |
 |---------------|------|--------|
-| `0x03` | Session (Nitrolite Yellow checkpoint) | `oracleCoordinator.submitSession(report[1:])` → `SettlementRouter.finalizeSession` → `ChannelSettlement.submitCheckpointFromPayload` |
+| `0x03` | Session (checkpoint) | `oracleCoordinator.submitSession(report[1:])` → `SettlementRouter.finalizeSession` → `ChannelSettlement.submitCheckpointFromPayload` |
 | (none) | Outcome | `abi.decode(report, ...)` → `oracleCoordinator.submitResult(market, marketId, outcomeIndex, confidence)` → `SettlementRouter.settleMarket` → `MarketRegistry.onReport(0x01...)` |
 
 ### 2.2 CREPublishReceiver (Separate Receiver)
@@ -55,6 +55,25 @@ Key properties:
 - Forwarder → `CREPublishReceiver.onReport` → `MarketFactory.createFromDraft`
 
 See [CREReportFormats.md](CREReportFormats.md) for exact payload formats.
+
+### 2.3 Forwarder Routing
+
+The Chainlink Forwarder delivers reports to a **receiver address**. Each CRE workflow is configured with a target receiver:
+
+- **CREReceiver** — Outcome and checkpoint flows (report prefix selects path internally)
+- **CREPublishReceiver** — Publish-from-draft flow (separate workflow targeting this receiver)
+
+The Forwarder does not route by prefix; the workflow config selects which receiver receives the report.
+
+### 2.4 ReceiverTemplate Metadata (Optional)
+
+Receivers extending [ReceiverTemplate.sol](../../src/interfaces/ReceiverTemplate.sol) can validate workflow identity via metadata:
+
+- `setExpectedWorkflowId(bytes32)` — Only reports from this workflow
+- `setExpectedAuthor(address)` — Only reports from this workflow owner
+- `setExpectedWorkflowName(string)` — Only reports with this name (requires author; collision risk with bytes10 truncation)
+
+Metadata is `abi.encodePacked(workflowId, workflowName, workflowOwner)` from the Forwarder.
 
 ---
 
@@ -81,31 +100,7 @@ So the intended path is: **CRE (via Forwarder) → CREReceiver → OracleCoordin
 
 ## 4. CRE Pipeline Diagram
 
-```mermaid
-flowchart LR
-    subgraph relayer [Relayer]
-        SESSION[Session State]
-        CP[Build Checkpoint]
-        PAYLOAD[Payload + Sigs]
-    end
-
-    subgraph cre [CRE Workflow]
-        FETCH[Fetch from Relayer HTTP]
-        WRITE[writeReport]
-    end
-
-    subgraph onchain [On-Chain]
-        FWD[Chainlink Forwarder]
-        CR[CREReceiver]
-        OC[OracleCoordinator]
-        SR[SettlementRouter]
-        CS[ChannelSettlement]
-    end
-
-    SESSION --> CP --> PAYLOAD
-    PAYLOAD -->|HTTP| FETCH --> WRITE --> FWD
-    FWD --> CR --> OC --> SR --> CS
-```
+See [CREPipelineDiagram.md](CREPipelineDiagram.md) for full topology and per-flow sequence diagrams.
 
 ---
 
@@ -151,6 +146,7 @@ The Forwarder is the **only** contract that can call `onReport`. CRE workflows r
 ## 6. References
 
 - [Chainlink CRE Documentation](https://docs.chain.link/cre) — Official docs
-- [CREReceiver.sol](../../../src/oracle/CREReceiver.sol) — `_processReport` (lines 31–41)
+- [CREPipelineDiagram.md](CREPipelineDiagram.md) — Full pipeline and sequence diagrams
+- [CREContractReference.md](CREContractReference.md) — Contract methods and guards
 - [CREReportFormats.md](CREReportFormats.md) — Payload schemas
 - [CREWorkflowIntegration.md](CREWorkflowIntegration.md) — Workflow setup, endpoints, config

@@ -1,71 +1,62 @@
-# Relayer and Nitrolite Yellow Overview
+# Relayer Overview
 
-**Last updated:** 2026-02-20  
-**Context:** [CurrentSmartContract.md](../CurrentSmartContract.md) | [e2eAvalanceFujiTest.md](../../../e2e/e2eAvalanceFujiTest.md)
-
----
-
-## 1. What Is Nitrolite?
-
-**Nitrolite** ([`@erc7824/nitrolite`](https://github.com/erc7824/nitrolite)) is a lightweight **state channel framework** for Ethereum and EVM-compatible chains, built on the **ERC-7824** standard. It enables:
-
-- **Off-chain transactions** — Instant finality between parties; minimal on-chain footprint
-- **High throughput** — Thousands of transactions per second
-- **Security guarantees** — Cryptographic proofs and challenge periods; same security as on-chain
-- **Chain-agnostic** — Works with any EVM chain
-
-### 1.1 Nitrolite Components
-
-| Component | Role |
-|-----------|------|
-| **Smart Contracts** | ChannelHub, ChannelEngine for state channel management |
-| **Clearnode** | Message broker and off-chain state manager (Yellow Network) |
-| **TypeScript SDK** | Client library; RetroPick relayer uses `NitroliteClient`, `WalletStateSigner` |
-| **Custody / Adjudicator** | On-chain contracts for asset custody and dispute resolution |
-
-### 1.2 Yellow Network Relationship
-
-**Yellow Network** is a decentralized clearing and settlement network that uses Nitrolite. It provides:
-
-- **Clearnet** — Sandbox/production environment: `wss://clearnet-sandbox.yellow.com/ws`
-- **Chain abstraction** — Unified balance across chains
-- **Clearnodes** — Trustless execution layers for off-chain operations
-- **Dispute resolution** — Via ERC-7824 contracts if a Clearnode is unavailable
-
-RetroPick's relayer uses the **Nitrolite TypeScript SDK** for custody/adjudicator setup and state signing. The relayer itself implements the **session state** and **LS-LMSR pricing**; Nitrolite provides the channel infrastructure.
+**Last updated:** 2026-03-01  
+**Context:** [CurrentSmartContract.md](../CurrentSmartContract.md) | [RelayerArchitecture.md](RelayerArchitecture.md)
 
 ---
 
-## 2. Relayer Role
+## 1. What Is the Relayer?
 
-The **relayer** (`apps/relayer`) is the off-chain execution layer for Nitrolite Yellow sessions. It:
+The **relayer** is the **off-chain trading engine** for RetroPick. It:
 
-- Maintains **Yellow session state** (positions, balances, nonce, q-vector for LS-LMSR)
+- Maintains **session state** (positions, balances, LS-LMSR q-vector)
 - Runs **LS-LMSR pricing** for trades
 - Exposes **trading API** (`POST /api/trade/buy`, `POST /api/trade/swap`)
-- Builds **checkpoint payloads** with operator + user signatures
+- Builds **checkpoint payloads** with operator + user EIP-712 signatures
 - Serves **CRE endpoints** (`GET/POST /cre/checkpoints/:sessionId`) for workflow integration
 
 **The relayer does not send on-chain transactions.** It prepares signed data; the CRE workflow delivers it on-chain via the Chainlink Forwarder.
 
 ---
 
-## 3. Nitrolite Yellow vs Legacy Yellow
+## 2. Standalone Mode (Primary)
 
-RetroPick has two Yellow session implementations. **DeployTestnet and production use Nitrolite only.**
+The relayer operates as a **standalone off-chain trading engine**. It uses:
 
-| Aspect | Nitrolite Yellow (Production) | Legacy Yellow |
-|--------|-------------------------------|---------------|
-| **Contract** | `ChannelSettlement` | `SessionFinalizer` |
+- **viem** for EIP-712 signing and ABI encoding
+- **In-memory session state** (LS-LMSR, accounts, nonce)
+- **No Nitrolite or Yellow WebSocket** required
+
+Checkpoint building and trading are **Nitrolite-independent**. Optional Nitrolite/Yellow glue may exist for future use but is not used for checkpoint signing.
+
+---
+
+## 3. Nitrolite / Yellow (Optional, Legacy)
+
+**Nitrolite** ([`@erc7824/nitrolite`](https://github.com/erc7824/nitrolite)) is a state channel framework. **Yellow Network** provides clearnet and chain abstraction. RetroPick's relayer *can* use Nitrolite for custody/adjudicator setup, but:
+
+- **Checkpoint path** uses only viem + EIP-712; no Nitrolite calls for signing
+- **NitroliteClient** and **Yellow WebSocket** are optional; the core relayer works without them
+
+See [StandaloneRelayerPlan.md](StandaloneRelayerPlan.md) for running without Nitrolite.
+
+---
+
+## 4. Checkpoint vs Legacy Session
+
+RetroPick has two session settlement paths:
+
+| Aspect | Checkpoint (Primary) | Legacy |
+|--------|----------------------|--------|
+| **Contract** | ChannelSettlement | SessionFinalizer |
 | **Payload** | `(Checkpoint, Delta[], opSig, users, userSigs)` | `SessionPayload{participants, balances, signatures, backendSignature}` |
 | **Signing** | Operator + every delta user | Backend + each participant |
 | **State model** | Deltas (incremental) | Balances snapshot |
-| **Deployed in DeployTestnet** | Yes | No |
 | **Relayer CRE path** | `GET/POST /cre/checkpoints/:sessionId` | `GET /cre/sessions/:sessionId` |
 
 ---
 
-## 4. Nitrolite Yellow Lifecycle
+## 5. Lifecycle
 
 ```mermaid
 flowchart TB
@@ -73,7 +64,7 @@ flowchart TB
         U1[User trades]
         U2[User trades]
         REL[Relayer: LS-LMSR pricing]
-        SESSION[Yellow session state]
+        SESSION[Session state]
         CP[Build checkpoint + deltas]
         OP[Operator signs]
         USERS[Users sign]
@@ -86,16 +77,17 @@ flowchart TB
         SR[SettlementRouter]
     end
 
-    subgraph onchain [On-Chain]
+    subgraph onchain [On-Chain V3]
         CS[ChannelSettlement]
-        EL[ExecutionLedger]
+        OT[OutcomeToken1155]
         MAV[MultiAssetVault]
     end
 
     U1 --> REL
     U2 --> REL
     REL --> SESSION --> CP --> OP --> USERS
-    FWD -->|0x03 + payload| CR --> OC --> SR --> CS --> EL
+    FWD -->|0x03 + payload| CR --> OC --> SR --> CS
+    CS --> OT
     CS --> MAV
 ```
 
@@ -107,59 +99,37 @@ flowchart TB
 
 ---
 
-## 5. Key Concepts
+## 6. Key Concepts
 
 | Concept | Meaning |
 |---------|---------|
-| **Yellow session** | Per-market/per-session off-chain trading channel; gasless; LS-LMSR pricing |
+| **Session** | Per-market/per-session off-chain trading channel; gasless; LS-LMSR pricing |
 | **Checkpoint** | Signed state commitment: `(marketId, sessionId, nonce, stateHash, deltasHash)` |
 | **Delta** | Netted effects per user: `(user, outcomeIndex, sharesDelta, cashDelta)` |
-| **Nitrolite** | Yellow Network SDK (`@erc7824/nitrolite`); relayer uses it for custody/adjudicator setup |
 | **Operator** | Trusted signer; signs checkpoints; same key as relayer `OPERATOR_PRIVATE_KEY` |
 
 ---
 
-## 6. LS-LMSR Pricing (Deep Dive)
-
-The relayer uses **LS-LMSR (Liquidity-Sensitive Logarithmic Market Scoring Rule)** for prediction market pricing (whitepaper Section 5):
+## 7. LS-LMSR Pricing
 
 | Symbol | Meaning |
 |--------|---------|
 | `q` | Outcome share vector (q_i = net shares for outcome i) |
-| `b` | Liquidity parameter (or `b(q) = b0 + α·OI(q)` for LS extension) |
+| `b` | Liquidity parameter |
 | `C(q)` | Cost function: `b·ln(Σ exp(q_i/b))` |
 | `p_i(q)` | Price for outcome i: `exp(q_i/b) / Σ exp(q_j/b)` |
 
-**BuyShares:** `CostBuy(q, k, δ) = C(q + δ·e_k) - C(q)` — cost to buy δ shares of outcome k.  
-**SwapShares:** `CostSwap(q, i, j, δ) = C(q - δ·e_i + δ·e_j) - C(q)` — cost to swap δ from i to j.
-
-Session state tracks `q`, `accounts` (balance, positions per user), and `nonce`. Trades update `q` and account state; checkpoints commit the net **deltas** (share and cash changes) to the chain.
-
----
-
-## 7. Session State Structure
-
-From [sessionStore.ts](../../../../../../apps/relayer/src/state/sessionStore.ts):
-
-```ts
-SessionState = {
-  sessionId, marketId, vaultId, epoch, nonce,
-  q: number[],           // LMSR outcome vector
-  bParams: { b, b0?, alpha? },
-  accounts: Map<address, { balance, positions, feeAccrued, initialBalance? }>,
-  prevStateHash, feeParams, resolveTime
-}
-```
-
-- `q` — Net outcome shares in the AMM; updated by BuyShares/SwapShares.
-- `accounts` — Per-user balance (cash) and positions (shares per outcome).
-- `initialBalance` — Used to compute `cashDelta = initialBalance - balance` for checkpoint deltas.
+**BuyShares:** `CostBuy(q, k, δ) = C(q + δ·e_k) - C(q)`  
+**SwapShares:** `CostSwap(q, i, j, δ) = C(q - δ·e_i + δ·e_j) - C(q)`
 
 ---
 
 ## 8. See Also
 
+- [RelayerArchitecture.md](RelayerArchitecture.md) — Full architecture, session state, lifecycle
+- [CheckpointEIP712.md](CheckpointEIP712.md) — Checkpoint/Delta structs, EIP-712
 - [RelayerAPI.md](RelayerAPI.md) — CRE endpoint specs
-- [NitroliteYellowCheckpoint.md](NitroliteYellowCheckpoint.md) — Checkpoint/Delta structs, EIP-712
-- [RelayerConfiguration.md](RelayerConfiguration.md) — Env vars, NitroliteClient
-- [CREOverview.md](../cre/CREOverview.md) — Why relayer goes through CRE
+- [RelayerConfiguration.md](RelayerConfiguration.md) — Env vars, Standalone vs Nitrolite
+- [StandaloneRelayerPlan.md](StandaloneRelayerPlan.md) — Nitrolite removal plan
+- [ContractRelayerInterface.md](ContractRelayerInterface.md) — Contract methods
+- [FrontendIntegration.md](FrontendIntegration.md) — Frontend signing flow

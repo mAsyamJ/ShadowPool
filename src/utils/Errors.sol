@@ -30,6 +30,11 @@ library Errors {
     error CheckpointAfterTradingClose();
     error LiquidityVaultRequired();
 
+    // Escrow: reserve/release
+    error InsufficientAvailableBalance();
+    error InsufficientReservedBalance();
+    error CancelTooEarly();
+
     // V3: ERC1155 + Risk Manager
     error BadCashAccounting();
     error LpVaultInsolvent(uint256 need, uint256 have);

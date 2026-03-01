@@ -281,6 +281,70 @@ contract E2EDeployTestnetTest is Test {
     }
 
     // -------------------------------------------------------------------------
+    // E2E: Escrow - withdraw blocked during checkpoint window, released on finalize
+    // -------------------------------------------------------------------------
+
+    function testE2E_EscrowWithdrawBlockedDuringCheckpointWindow() public {
+        console2.log("[E2E] Escrow: submit reserves, withdraw reverts during window, finalize releases");
+
+        vm.prank(address(marketFactory));
+        marketRegistry.createMarketForWithExpiryAndAsset(
+            "Escrow test market",
+            creator,
+            uint48(block.timestamp + 86400),
+            address(settlementToken)
+        );
+        uint256 marketId = 0;
+
+        vm.prank(trader);
+        settlementToken.approve(address(multiAssetVault), 1000 ether);
+        vm.prank(trader);
+        multiAssetVault.deposit(address(settlementToken), 100 ether);
+
+        ShadowTypes.Delta[] memory deltas = new ShadowTypes.Delta[](1);
+        deltas[0] = ShadowTypes.Delta({
+            user: trader,
+            outcomeIndex: 0,
+            sharesDelta: 10,
+            cashDelta: -50 ether
+        });
+        bytes32 dHash = Hashing.hashDeltas(deltas);
+        ShadowTypes.Checkpoint memory cp = ShadowTypes.Checkpoint({
+            marketId: marketId,
+            sessionId: sessionId,
+            nonce: 1,
+            validAfter: 0,
+            validBefore: 0,
+            lastTradeAt: uint48(block.timestamp),
+            stateHash: keccak256("state"),
+            deltasHash: dHash,
+            riskHash: bytes32(0)
+        });
+
+        channelSettlement.submitCheckpoint(
+            cp,
+            deltas,
+            _signCheckpoint(cp, operatorPk),
+            _toArray(trader),
+            _toBytesArray(_signCheckpoint(cp, traderPk))
+        );
+
+        assertEq(multiAssetVault.reservedBalance(trader, address(settlementToken)), 50 ether);
+        assertEq(multiAssetVault.availableBalance(trader, address(settlementToken)), 50 ether);
+
+        vm.prank(trader);
+        vm.expectRevert();
+        multiAssetVault.withdraw(address(settlementToken), 60 ether);
+
+        vm.warp(block.timestamp + 31 minutes);
+        channelSettlement.finalizeCheckpoint(marketId, sessionId, deltas);
+
+        assertEq(multiAssetVault.reservedBalance(trader, address(settlementToken)), 0);
+        vm.prank(trader);
+        multiAssetVault.withdraw(address(settlementToken), 50 ether);
+    }
+
+    // -------------------------------------------------------------------------
     // E2E: Session payload routing (checkpoint via CRE 0x03)
     // -------------------------------------------------------------------------
 

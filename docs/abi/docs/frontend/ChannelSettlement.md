@@ -1,6 +1,6 @@
 # ChannelSettlement – Frontend Integration
 
-Last updated: 2026-02-20  
+Last updated: 2026-03-01  
 ABI: `ChannelSettlement.json`  
 Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartContract.md)
 
@@ -8,7 +8,7 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 
 ## 1. Contract Purpose
 
-`ChannelSettlement` manages checkpoint-based settlement for offchain trading. It receives checkpoint payloads from the relayer (via CRE), validates operator and user signatures, and applies share/cash deltas to `ExecutionLedger` and vaults. Frontend prompts users to sign checkpoint digests; relayer submits.
+`ChannelSettlement` manages checkpoint-based settlement for offchain trading. It receives checkpoint payloads from the relayer (via CRE), validates operator and user signatures, and applies share/cash deltas to **OutcomeToken1155** (V3) and vaults. Vaults use 3-bucket escrow (free, reserved, available); reserves are applied on submit and released on finalize. Frontend prompts users to sign checkpoint digests; relayer submits.
 
 ---
 
@@ -34,7 +34,8 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 | `CHALLENGE_WINDOW_SECONDS` | — | `uint32` | Challenge window |
 | `MAX_DELTAS` | — | `uint32` | Max deltas per checkpoint |
 | `MAX_USERS` | — | `uint32` | Max signers |
-| `LEDGER` | — | `address` | ExecutionLedger |
+| `outcomeToken` | — | `address` | OutcomeToken1155 (V3); 0 = legacy |
+| `LEDGER` | — | `address` | ExecutionLedger (legacy; 0 when OutcomeToken used) |
 | `VAULT` | — | `address` | CollateralVault |
 | `multiAssetVault` | — | `address` | MultiAssetVault if used |
 | `marketRegistry` | — | `address` | MarketRegistry |
@@ -118,13 +119,15 @@ Delta: user, outcomeIndex, sharesDelta, cashDelta
 
 - Integrate with relayer; show "Sign checkpoint" when relayer requests.
 - Display session state from relayer, not from chain.
-- After `CheckpointFinalized`, refresh `positionOf` and vault balances.
+- After `CheckpointFinalized`, refresh `OutcomeToken1155.balanceOf` and vault balances (`freeBalance`, `reservedBalance`, `availableBalance`).
 - **Deployment config key**: `ChannelSettlement`
 
 ---
 
 ## 8. References
 
-- [ExecutionLedger.md](ExecutionLedger.md) — Position updates
-- [CollateralVault.md](CollateralVault.md) / [MultiAssetVault.md](MultiAssetVault.md) — Cash updates
-- [AppFlow.md](AppFlow.md) — Relayer integration
+- [OutcomeToken1155.md](OutcomeToken1155.md) — Position mint/burn (V3)
+- [MarketRiskManager.md](MarketRiskManager.md) — LP payout cap (V3)
+- [CollateralVault.md](CollateralVault.md) / [MultiAssetVault.md](MultiAssetVault.md) — Cash updates, 3-bucket escrow
+- [RelayerIntegration.md](RelayerIntegration.md) — Relayer integration
+- [AppFlow.md](AppFlow.md) — Trader flow

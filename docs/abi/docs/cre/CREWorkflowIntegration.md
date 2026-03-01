@@ -1,7 +1,7 @@
 # CRE Workflow Integration
 
-**Last updated:** 2026-02-20  
-**Context:** [CREOverview.md](CREOverview.md) | [e2eAvalanceFujiTest.md](../../../e2e/e2eAvalanceFujiTest.md)
+**Last updated:** 2026-03-01  
+**Context:** [CREOverview.md](CREOverview.md) | [CREPipelineDiagram.md](CREPipelineDiagram.md) | [CREDeploymentWiring.md](CREDeploymentWiring.md)
 
 ---
 
@@ -28,31 +28,31 @@ The EVM capability in CRE provides `writeReport(payload)`, which:
 
 ---
 
-## 2. Flow: Nitrolite Yellow Checkpoint
+## 2. Flow: Checkpoint Settlement
 
-```mermaid
-sequenceDiagram
-    participant Relayer
-    participant CRE as CRE Workflow
-    participant Forwarder
-    participant CR as CREReceiver
-    participant SR as SettlementRouter
-    participant CS as ChannelSettlement
-
-    Relayer->>CRE: GET /cre/checkpoints/:sessionId
-    CRE->>Relayer: Checkpoint spec (digest, users)
-    Note over CRE: Collect user signatures
-    Relayer->>CRE: POST /cre/checkpoints/:sessionId { userSigs }
-    Relayer->>CRE: Payload (0x03-prefixed)
-    CRE->>Forwarder: writeReport(payload)
-    Forwarder->>CR: onReport(payload)
-    CR->>SR: submitSession → finalizeSession
-    SR->>CS: submitCheckpointFromPayload
-```
+See [CREPipelineDiagram.md](CREPipelineDiagram.md) §4 and [CREWorkflowCheckpoints.md](CREWorkflowCheckpoints.md) for full sequence and step-by-step guide.
 
 ---
 
-## 3. Relayer Endpoints Used by CRE
+## 3. Post-Submit: Finalizer Flow
+
+After checkpoint submit, a **30-minute challenge window** applies. Then **anyone** can call `ChannelSettlement.finalizeCheckpoint(marketId, sessionId, deltas)`.
+
+**Who typically finalizes:**
+
+| Option | Description |
+|--------|--------------|
+| **Relayer finalizer** | Relayer exposes `POST /cre/finalize/:sessionId`; submits finalize tx via RPC |
+| **CRE workflow** | Separate cron workflow checks challenge deadline and submits finalize |
+| **Bot** | Third-party bot watches for deadline and calls finalize |
+
+**Deltas source:** `GET /cre/checkpoints/:sessionId` returns `deltas`.
+
+See [CREWorkflowCheckpoints.md](CREWorkflowCheckpoints.md) §4 for details.
+
+---
+
+## 4. Relayer Endpoints Used by CRE
 
 | Method | Endpoint | Use |
 |--------|----------|-----|
@@ -66,25 +66,27 @@ See [../relayer/RelayerAPI.md](../relayer/RelayerAPI.md) for full API details.
 
 ---
 
-## 4. Environment and Configuration
+## 5. Environment and Configuration
 
-### 4.1 On-Chain (Deployment)
+See [CREDeploymentWiring.md](CREDeploymentWiring.md) for full deployment checklist.
+
+### 5.1 On-Chain (Deployment)
 
 | Variable | Description |
 |----------|-------------|
 | `CHAINLINK_FORWARDER` | Chainlink Forwarder contract address for the target chain |
 | `OPERATOR` | Operator address (relayer checkpoint signer); used by ChannelSettlement |
 
-### 4.2 Relayer
+### 5.2 Relayer
 
 | Variable | Description |
 |----------|-------------|
-| `CHANNEL_SETTLEMENT_ADDRESS` | ChannelSettlement contract for Nitrolite Yellow path |
+| `CHANNEL_SETTLEMENT_ADDRESS` | ChannelSettlement contract for checkpoint path |
 | `OPERATOR_PRIVATE_KEY` | Key used to sign checkpoints; must match ChannelSettlement.operator |
 | `CHAIN_ID` | Chain ID for EIP-712 checkpoint signing |
-| `RPC_URL` | RPC endpoint (optional, for NitroliteClient) |
+| `RPC_URL` | RPC endpoint (optional, for finalizer if relayer submits finalize tx) |
 
-### 4.3 CRE Workflow
+### 5.3 CRE Workflow
 
 | Variable | Description |
 |----------|-------------|
@@ -93,18 +95,18 @@ See [../relayer/RelayerAPI.md](../relayer/RelayerAPI.md) for full API details.
 
 ---
 
-## 5. Typical Checkpoint Flow
+## 6. Typical Checkpoint Flow
 
 1. **CRE polls** `GET /cre/checkpoints` or similar to find sessions with pending checkpoints.
 2. **CRE fetches** `GET /cre/checkpoints/:sessionId` to get digest and list of signing users.
 3. **CRE collects** user signatures (via frontend or another service).
 4. **CRE POSTs** `POST /cre/checkpoints/:sessionId` with `{ userSigs }` to get the full `0x03`-prefixed payload.
 5. **CRE calls** `writeReport(payload)`; Forwarder delivers to `CREReceiver.onReport`.
-6. **On-chain:** Checkpoint submitted; after 30 min challenge window, `finalizeCheckpoint` can be called.
+6. **On-chain:** Checkpoint submitted; after 30 min challenge window, `finalizeCheckpoint` can be called by anyone.
 
 ---
 
-## 6. Workflow Development Lifecycle
+## 7. Workflow Development Lifecycle
 
 | Phase | Description |
 |-------|-------------|
@@ -117,19 +119,20 @@ Simulation uses live relayer URLs and RPC endpoints, so you can validate the ful
 
 ---
 
-## 7. Checklist: CRE Workflow for Checkpoints
+## 8. Checklist: CRE Workflow for Checkpoints
 
 1. **Relayer running** — `CHANNEL_SETTLEMENT_ADDRESS`, `OPERATOR_PRIVATE_KEY`, `CHAIN_ID` set.
 2. **Workflow trigger** — Cron (e.g. `0 */5 * * * *` every 5 min) or HTTP trigger.
 3. **Callback logic** — `GET /cre/checkpoints` → for each session, `GET /cre/checkpoints/:sessionId` → collect `userSigs` (external) → `POST` → receive payload → `evmClient.writeReport(payload)`.
 4. **Receiver config** — Workflow targets correct Forwarder and chain; CREReceiver address matches deployment.
 5. **User signing** — Frontend or another service must collect user signatures and provide them to the workflow (or workflow fetches from a signing service).
+6. **Finalizer** — Plan for who calls `finalizeCheckpoint` after challenge window (relayer, CRE workflow, or bot).
 
 ---
 
-## 8. References
+## 9. References
 
 - [Chainlink CRE Docs](https://docs.chain.link/cre) — Workflows, triggers, capabilities
-- [creRoutes.ts](../../../../../../apps/relayer/src/api/creRoutes.ts) — Relayer CRE endpoints
-- [buildCheckpointPayload.ts](../../../../../../apps/relayer/src/settlement/buildCheckpointPayload.ts) — Payload construction
-- [e2eAvalanceFujiTest.md](../../../e2e/e2eAvalanceFujiTest.md) — Section 9.1 Nitrolite Yellow + Relayer Integration
+- [CREWorkflowCheckpoints.md](CREWorkflowCheckpoints.md) — Detailed checkpoint workflow guide
+- [CREDeploymentWiring.md](CREDeploymentWiring.md) — Deployment checklist
+- [RelayerAPI.md](../relayer/RelayerAPI.md) — Relayer CRE endpoints

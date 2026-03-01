@@ -34,6 +34,26 @@ contract CollateralVaultAdapter is IMultiAssetVault {
         return VAULT.freeBalance(user);
     }
 
+    function reservedBalance(address user, address asset) external view override returns (uint256) {
+        _requireToken(asset);
+        return VAULT.reservedBalance(user);
+    }
+
+    function availableBalance(address user, address asset) external view override returns (uint256) {
+        _requireToken(asset);
+        return VAULT.availableBalance(user);
+    }
+
+    function reserve(address user, address asset, uint256 amount) external override {
+        _requireToken(asset);
+        VAULT.reserve(user, amount);
+    }
+
+    function release(address user, address asset, uint256 amount) external override {
+        _requireToken(asset);
+        VAULT.release(user, amount);
+    }
+
     function lockedBalance(address user, address asset, uint256 marketId, bytes32 sessionId)
         external
         view

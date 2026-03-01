@@ -40,6 +40,7 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
     uint32 public constant MAX_DELTAS = 256;
     uint32 public constant MAX_USERS = 256;
     uint32 public constant CHALLENGE_WINDOW_SECONDS = 30 * 60; // 30 minutes
+    uint64 public constant CANCEL_DELAY = 6 hours;
 
     struct Pending {
         uint64 nonce;
@@ -49,6 +50,10 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         bytes32 deltasHash;
         bytes32 riskHash;
         bool exists;
+        address settlementAsset;
+        address[] reserveUsers;
+        uint256[] reserveAmts;
+        uint64 createdAt;
     }
 
     mapping(bytes32 => uint64) public latestNonceByKey;
@@ -63,6 +68,7 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
     );
     event CheckpointChallenged(uint256 indexed marketId, bytes32 indexed sessionId, uint64 newNonce);
     event CheckpointFinalized(uint256 indexed marketId, bytes32 indexed sessionId, uint64 nonce);
+    event PendingCheckpointCancelled(uint256 indexed marketId, bytes32 indexed sessionId, uint64 nonce);
     event MarketRegistryUpdated(address indexed previous, address indexed current);
     event FeeManagerUpdated(address indexed previous, address indexed current);
     event FeePoolUpdated(address indexed previous, address indexed current);
@@ -126,6 +132,96 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
             key := keccak256(ptr, 0x40)
         }
         return key;
+    }
+
+    function _resolveSettlementAsset(uint256 marketId) internal view returns (address) {
+        address mav = address(multiAssetVault);
+        IMarketRegistry mr = marketRegistry;
+        return mav != address(0) && address(mr) != address(0) ? mr.getSettlementAsset(marketId) : VAULT.token();
+    }
+
+    function _computeReserves(
+        ShadowTypes.Delta[] memory deltas,
+        address /* settlementAsset */
+    ) internal view returns (address[] memory users, uint256[] memory amts) {
+        uint256 n = deltas.length;
+        address[] memory uniq = new address[](n);
+        int256[] memory net = new int256[](n);
+        uint256 ucount = 0;
+        FeeManager fm = feeManager;
+
+        for (uint256 i = 0; i < n; i++) {
+            address u = deltas[i].user;
+            int128 cd = deltas[i].cashDelta;
+            if (cd == 0) continue;
+
+            int128 nd = cd;
+            if (address(fm) != address(0) && cd > 0) {
+                (, , , int128 netDelta) = fm.computeSplit(cd);
+                nd = netDelta;
+            }
+
+            uint256 idx = type(uint256).max;
+            for (uint256 j = 0; j < ucount; j++) {
+                if (uniq[j] == u) {
+                    idx = j;
+                    break;
+                }
+            }
+            if (idx == type(uint256).max) {
+                idx = ucount;
+                uniq[ucount] = u;
+                net[ucount] = 0;
+                ucount++;
+            }
+            net[idx] += int256(int128(nd));
+        }
+
+        uint256 dcount = 0;
+        for (uint256 i = 0; i < ucount; i++) {
+            if (net[i] < 0) dcount++;
+        }
+
+        users = new address[](dcount);
+        amts = new uint256[](dcount);
+        uint256 k = 0;
+        for (uint256 i = 0; i < ucount; i++) {
+            if (net[i] < 0) {
+                users[k] = uniq[i];
+                amts[k] = uint256(-net[i]);
+                k++;
+            }
+        }
+    }
+
+    function _releasePendingReserves(bytes32 k) internal {
+        Pending storage p = pendingByKey[k];
+        if (p.reserveUsers.length == 0) return;
+
+        address asset = p.settlementAsset;
+        address mav = address(multiAssetVault);
+
+        for (uint256 i = 0; i < p.reserveUsers.length; i++) {
+            if (mav != address(0)) {
+                multiAssetVault.release(p.reserveUsers[i], asset, p.reserveAmts[i]);
+            } else {
+                VAULT.release(p.reserveUsers[i], p.reserveAmts[i]);
+            }
+        }
+    }
+
+    function cancelPendingCheckpoint(uint256 marketId, bytes32 sessionId) external {
+        bytes32 k = _key(marketId, sessionId);
+        Pending storage p = pendingByKey[k];
+        if (!p.exists) revert Errors.NoPending();
+        if (block.timestamp < uint256(p.createdAt) + CANCEL_DELAY) revert Errors.CancelTooEarly();
+
+        _releasePendingReserves(k);
+
+        uint64 nonce = p.nonce;
+        delete pendingByKey[k];
+
+        emit PendingCheckpointCancelled(marketId, sessionId, nonce);
     }
 
     function latestNonce(uint256 marketId, bytes32 sessionId) external view returns (uint64) {
@@ -236,6 +332,7 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
             if (!p.exists) revert Errors.NoPendingToChallenge();
             if (block.timestamp >= p.challengeDeadline) revert Errors.WindowPassed();
             if (cp.nonce <= p.nonce) revert Errors.ChallengeNotNewer();
+            _releasePendingReserves(key);
         }
 
         p.nonce = cp.nonce;
@@ -245,6 +342,21 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         p.riskHash = cp.riskHash;
         p.challengeDeadline = uint64(block.timestamp) + CHALLENGE_WINDOW_SECONDS;
         p.exists = true;
+
+        address settlementAsset = _resolveSettlementAsset(cp.marketId);
+        (address[] memory rUsers, uint256[] memory rAmts) = _computeReserves(deltas, settlementAsset);
+        address mav = address(multiAssetVault);
+        for (uint256 i = 0; i < rUsers.length; i++) {
+            if (mav != address(0)) {
+                multiAssetVault.reserve(rUsers[i], settlementAsset, rAmts[i]);
+            } else {
+                VAULT.reserve(rUsers[i], rAmts[i]);
+            }
+        }
+        p.settlementAsset = settlementAsset;
+        p.reserveUsers = rUsers;
+        p.reserveAmts = rAmts;
+        p.createdAt = uint64(block.timestamp);
     }
 
     function challengeCheckpoint(
@@ -367,6 +479,8 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
                 }
             }
         }
+
+        _releasePendingReserves(k);
 
         latestNonceByKey[k] = p.nonce;
         delete pendingByKey[k];
@@ -508,6 +622,7 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
             if (!p.exists) revert Errors.NoPendingToChallenge();
             if (block.timestamp >= p.challengeDeadline) revert Errors.WindowPassed();
             if (cp.nonce <= p.nonce) revert Errors.ChallengeNotNewer();
+            _releasePendingReserves(key);
         }
 
         p.nonce = cp.nonce;
@@ -517,5 +632,20 @@ contract ChannelSettlement is ShadowEIP712, Ownable, IChannelSettlement {
         p.riskHash = cp.riskHash;
         p.challengeDeadline = uint64(block.timestamp) + CHALLENGE_WINDOW_SECONDS;
         p.exists = true;
+
+        address settlementAsset = _resolveSettlementAsset(cp.marketId);
+        (address[] memory rUsers, uint256[] memory rAmts) = _computeReserves(deltas, settlementAsset);
+        address mav = address(multiAssetVault);
+        for (uint256 i = 0; i < rUsers.length; i++) {
+            if (mav != address(0)) {
+                multiAssetVault.reserve(rUsers[i], settlementAsset, rAmts[i]);
+            } else {
+                VAULT.reserve(rUsers[i], rAmts[i]);
+            }
+        }
+        p.settlementAsset = settlementAsset;
+        p.reserveUsers = rUsers;
+        p.reserveAmts = rAmts;
+        p.createdAt = uint64(block.timestamp);
     }
 }

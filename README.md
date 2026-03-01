@@ -211,27 +211,66 @@ flowchart TB
 
 ### Verified Contract Addresses (Snowscan)
 
+#### Active: DeployBetaTestnet (current deployment)
+
+Script: `DeployBetaTestnet.s.sol` — Mock tokens, Faucet, V3-Escrow. Use for beta testers and relayer.
+
+| Contract              | Address |
+| --------------------- | ------- |
+| MockUSDC (settlement) | [0x61c8d94ab8a729126a9FA41751FaD7F464604948](https://testnet.snowtrace.io/address/0x61c8d94ab8a729126a9FA41751FaD7F464604948/contract/43113/code?chainid=43113) |
+| MockDAI               | [0xfefF1c0df050cDcD7dD6988749654A3a8948d746](https://testnet.snowtrace.io/address/0xfefF1c0df050cDcD7dD6988749654A3a8948d746/contract/43113/code?chainid=43113) |
+| MockUSDT              | [0xEcED85042Cbbb7756E0809e51aDf7B7a8d2851Aa](https://testnet.snowtrace.io/address/0xEcED85042Cbbb7756E0809e51aDf7B7a8d2851Aa/contract/43113/code?chainid=43113) |
+| MockEURC              | [0x08f7a4CFba8E8c944D33630faA2032b3B3b7c5e1](https://testnet.snowtrace.io/address/0x08f7a4CFba8E8c944D33630faA2032b3B3b7c5e1/contract/43113/code?chainid=43113) |
+| MockAVAX              | [0x8CA51cb13B91A6530429f154B8505c40BE0d7908](https://testnet.snowtrace.io/address/0x8CA51cb13B91A6530429f154B8505c40BE0d7908/contract/43113/code?chainid=43113) |
+| MockIDRX              | [0x952877CD34812E316CfE2324A632ad5c71d096EA](https://testnet.snowtrace.io/address/0x952877CD34812E316CfE2324A632ad5c71d096EA/contract/43113/code?chainid=43113) |
+| Faucet                | [0x4d74eCEc809D1DbbD8D4B9D1c26fFc8b8FbA9E89](https://testnet.snowtrace.io/address/0x4d74eCEc809D1DbbD8D4B9D1c26fFc8b8FbA9E89/contract/43113/code?chainid=43113) |
+| OutcomeToken1155     | [0x9B413811ecfD0e0679A7Ba785de44E15E7482044](https://testnet.snowtrace.io/address/0x9B413811ecfD0e0679A7Ba785de44E15E7482044/contract/43113/code?chainid=43113) |
+| MarketRiskManager     | [0x9DB5b69A6EdCC433e56C3C96e770A737a4b13555](https://testnet.snowtrace.io/address/0x9DB5b69A6EdCC433e56C3C96e770A737a4b13555/contract/43113/code?chainid=43113) |
+| ChannelSettlement     | [0xFA5D0e64B0B21374690345d4A88a9748C7E22182](https://testnet.snowtrace.io/address/0xFA5D0e64B0B21374690345d4A88a9748C7E22182/contract/43113/code?chainid=43113) |
+| MultiAssetVault       | [0x71EEA55f90c028aEE2b0F0785d015ea4e9165aBF](https://testnet.snowtrace.io/address/0x71EEA55f90c028aEE2b0F0785d015ea4e9165aBF/contract/43113/code?chainid=43113) |
+| CollateralVault       | [0x792a065dD308A1Fc3d115Ea006b3093D8fBd7ea1](https://testnet.snowtrace.io/address/0x792a065dD308A1Fc3d115Ea006b3093D8fBd7ea1/contract/43113/code?chainid=43113) |
+| MarketRegistry        | [0x3235094A8826a6205F0A0b74E2370A4AC39c6Cc2](https://testnet.snowtrace.io/address/0x3235094A8826a6205F0A0b74E2370A4AC39c6Cc2/contract/43113/code?chainid=43113) |
+| FeeManager            | [0x40094a387A609b5B983CD7eC8Ce3Ac44Ccbca1Db](https://testnet.snowtrace.io/address/0x40094a387A609b5B983CD7eC8Ce3Ac44Ccbca1Db/contract/43113/code?chainid=43113) |
+| FeePool               | [0xB0d262089Cd5F66239298eb462D878fC50CBD2f3](https://testnet.snowtrace.io/address/0xB0d262089Cd5F66239298eb462D878fC50CBD2f3/contract/43113/code?chainid=43113) |
+| TreasuryPool          | [0x504313Da50e3E3d42769B96A16B9F58C2B84348a](https://testnet.snowtrace.io/address/0x504313Da50e3E3d42769B96A16B9F58C2B84348a/contract/43113/code?chainid=43113) |
+| ReportValidator       | [0x45Ac2A2473675D7baA7b24E07dc9A4053b005282](https://testnet.snowtrace.io/address/0x45Ac2A2473675D7baA7b24E07dc9A4053b005282/contract/43113/code?chainid=43113) |
+| CREReceiver           | [0x51c0680d8E9fFE2A2f6CC65e598280D617D6cAb7](https://testnet.snowtrace.io/address/0x51c0680d8E9fFE2A2f6CC65e598280D617D6cAb7/contract/43113/code?chainid=43113) |
+| OracleCoordinator     | [0x101053889dE4748763AA337685aA6842D3D4723C](https://testnet.snowtrace.io/address/0x101053889dE4748763AA337685aA6842D3D4723C/contract/43113/code?chainid=43113) |
+| SettlementRouter      | [0xBfE28C2740C4b9Ee87299EF0a6590b21C0EBa4d0](https://testnet.snowtrace.io/address/0xBfE28C2740C4b9Ee87299EF0a6590b21C0EBa4d0/contract/43113/code?chainid=43113) |
+| MarketPolicy          | [0x041584444a592d9c9Dbd7D1EDc110D63643408b5](https://testnet.snowtrace.io/address/0x041584444a592d9c9Dbd7D1EDc110D63643408b5/contract/43113/code?chainid=43113) |
+| MarketDraftBoard      | [0x8a81759d0A4383E4879b0Ff298Bf60ff24be8302](https://testnet.snowtrace.io/address/0x8a81759d0A4383E4879b0Ff298Bf60ff24be8302/contract/43113/code?chainid=43113) |
+| DraftClaimManager     | [0x0b7B98b10b2067a4918720Bc04f374c669B313d5](https://testnet.snowtrace.io/address/0x0b7B98b10b2067a4918720Bc04f374c669B313d5/contract/43113/code?chainid=43113) |
+| LiquidityVaultFactory | [0x714518B11a4ce31C4fE42F0155473FD5158AD84e](https://testnet.snowtrace.io/address/0x714518B11a4ce31C4fE42F0155473FD5158AD84e/contract/43113/code?chainid=43113) |
+| CREPublishReceiver    | [0x3AA7E5A28A72Df248806397Ea16C03fB10c46830](https://testnet.snowtrace.io/address/0x3AA7E5A28A72Df248806397Ea16C03fB10c46830/contract/43113/code?chainid=43113) |
+| MarketFactory         | [0x2f70602034854C14CBfD1F94C713f833d344d748](https://testnet.snowtrace.io/address/0x2f70602034854C14CBfD1F94C713f833d344d748/contract/43113/code?chainid=43113) |
+
+**Relayer:** `CHANNEL_SETTLEMENT_ADDRESS=0xFA5D0e64B0B21374690345d4A88a9748C7E22182`
+
 ---
 
-| Contract              | Address                                                                                                                                                         |
-| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+#### Legacy: DeployTestnet (earlier deployment)
+
+Script: `DeployTestnet.s.sol` — Real Fuji USDC, ExecutionLedger. Different addresses from above.
+
+| Contract              | Address |
+| --------------------- | ------- |
 | ExecutionLedger       | [0xE4d4187d6Ca2c4eA36A05d3eb61a7A79da7F6D25](https://testnet.snowtrace.io/address/0xE4d4187d6Ca2c4eA36A05d3eb61a7A79da7F6D25/contract/43113/code?chainid=43113) |
-| CollateralVault       | [0xe1557c8f239752A22278a5c55f0CB28b041D9fcd](https://testnet.snowtrace.io/address/0xe1557c8f239752A22278a5c55f0CB28b041D9fcd/contract/43113/code?chainid=43113) |
-| MultiAssetVault       | [0xf780caB68DE9800fd6b8ee6AEfc0b06A5F3181dB](https://testnet.snowtrace.io/address/0xf780caB68DE9800fd6b8ee6AEfc0b06A5F3181dB/contract/43113/code?chainid=43113) |
 | ChannelSettlement     | [0xa1F7673D2677FB9e48C7a6295DD7cF44F8c0A212](https://testnet.snowtrace.io/address/0xa1F7673D2677FB9e48C7a6295DD7cF44F8c0A212/contract/43113/code?chainid=43113) |
-| SettlementRouter      | [0x789daEE98ac0C8EEe220Dd768f0e2A05C66B983E](https://testnet.snowtrace.io/address/0x789daEE98ac0C8EEe220Dd768f0e2A05C66B983E/contract/43113/code?chainid=43113) |
+| CREReceiver           | [0xf427BC9e8C7004F394fa06147bf42aad1D516FdF](https://testnet.snowtrace.io/address/0xf427BC9e8C7004F394fa06147bf42aad1D516FdF/contract/43113/code?chainid=43113) |
 | MarketRegistry        | [0xdB8d890B9aE6A40D2838A508F7D2126cb42a36E4](https://testnet.snowtrace.io/address/0xdB8d890B9aE6A40D2838A508F7D2126cb42a36E4/contract/43113/code?chainid=43113) |
+| MarketFactory         | [0x68D0e961FdFAF031323099a4680847321eFBb7e5](https://testnet.snowtrace.io/address/0x68D0e961FdFAF031323099a4680847321eFBb7e5/contract/43113/code?chainid=43113) |
+| MultiAssetVault       | [0xf780caB68DE9800fd6b8ee6AEfc0b06A5F3181dB](https://testnet.snowtrace.io/address/0xf780caB68DE9800fd6b8ee6AEfc0b06A5F3181dB/contract/43113/code?chainid=43113) |
+| CollateralVault       | [0xe1557c8f239752A22278a5c55f0CB28b041D9fcd](https://testnet.snowtrace.io/address/0xe1557c8f239752A22278a5c55f0CB28b041D9fcd/contract/43113/code?chainid=43113) |
+| SettlementRouter      | [0x789daEE98ac0C8EEe220Dd768f0e2A05C66B983E](https://testnet.snowtrace.io/address/0x789daEE98ac0C8EEe220Dd768f0e2A05C66B983E/contract/43113/code?chainid=43113) |
 | FeeManager            | [0xB9C04B35C64dc263809DaeA3233de0855b44a82D](https://testnet.snowtrace.io/address/0xB9C04B35C64dc263809DaeA3233de0855b44a82D/contract/43113/code?chainid=43113) |
 | FeePool               | [0x59d2B7563bC7b80c3EcE9A3E616441e68ca158A6](https://testnet.snowtrace.io/address/0x59d2B7563bC7b80c3EcE9A3E616441e68ca158A6/contract/43113/code?chainid=43113) |
 | TreasuryPool          | [0x1723701b8143537e023b9C6165dAeF9A67125d43](https://testnet.snowtrace.io/address/0x1723701b8143537e023b9C6165dAeF9A67125d43/contract/43113/code?chainid=43113) |
 | ReportValidator       | [0xC6c31b73CE71B42aB45dd017061fcd5D9620a1bE](https://testnet.snowtrace.io/address/0xC6c31b73CE71B42aB45dd017061fcd5D9620a1bE/contract/43113/code?chainid=43113) |
 | OracleCoordinator     | [0xA30Fa013c5CAe93C2e75129ceA669635e011d6F8](https://testnet.snowtrace.io/address/0xA30Fa013c5CAe93C2e75129ceA669635e011d6F8/contract/43113/code?chainid=43113) |
-| CREReceiver           | [0xf427BC9e8C7004F394fa06147bf42aad1D516FdF](https://testnet.snowtrace.io/address/0xf427BC9e8C7004F394fa06147bf42aad1D516FdF/contract/43113/code?chainid=43113) |
 | MarketPolicy          | [0x98f399081CbDB2eeB66c8c3c51F5fF592A045396](https://testnet.snowtrace.io/address/0x98f399081CbDB2eeB66c8c3c51F5fF592A045396/contract/43113/code?chainid=43113) |
 | MarketDraftBoard      | [0xa1A31B61748252D7E1f15B2F74de0ce99f1a296f](https://testnet.snowtrace.io/address/0xa1A31B61748252D7E1f15B2F74de0ce99f1a296f/contract/43113/code?chainid=43113) |
 | DraftClaimManager     | [0x1Ccccc54e0cE928b3FC04aA2Ed4E012E7EaAdDe9](https://testnet.snowtrace.io/address/0x1Ccccc54e0cE928b3FC04aA2Ed4E012E7EaAdDe9/contract/43113/code?chainid=43113) |
 | LiquidityVaultFactory | [0xd895dD8547A0fC6214A7ce9D74B49F9b0601C362](https://testnet.snowtrace.io/address/0xd895dD8547A0fC6214A7ce9D74B49F9b0601C362/contract/43113/code?chainid=43113) |
-| MarketFactory         | [0x68D0e961FdFAF031323099a4680847321eFBb7e5](https://testnet.snowtrace.io/address/0x68D0e961FdFAF031323099a4680847321eFBb7e5/contract/43113/code?chainid=43113) |
 | CREPublishReceiver    | [0xEF0aebe656c82A6d070f904c0c31EE1B0B81fBB2](https://testnet.snowtrace.io/address/0xEF0aebe656c82A6d070f904c0c31EE1B0B81fBB2/contract/43113/code?chainid=43113) |
 
 ### Deployment Parameters (Fuji)
@@ -286,23 +325,58 @@ forge test -vvv
 
 ### Deploy (Production)
 
+**DeployTestnet** (production-style, real Fuji USDC):
+
 ```bash
 # Copy and configure environment
-cp .env.example .env.fuji  # or use deployment-specific env
+cp .env.example .env.fuji  # or use scripts/env/.env.fuji
 # Required: OPERATOR, SETTLEMENT_TOKEN, CHAINLINK_FORWARDER
 # Required: MIN_CONFIDENCE, PROTOCOL_FEE_BPS, LP_FEE_SHARE_BPS, CREATOR_FEE_SHARE_BPS
 
 forge script script/DeployTestnet.s.sol:DeployTestnet \
   --rpc-url $RPC_URL \
-  --broadcast
+  --broadcast \
+  --private-key $PRIVATE_KEY
+```
+
+**DeployBetaTestnet** (beta testers, mock tokens + Faucet):
+
+```bash
+source scripts/env/.env.fuji
+# Required: OPERATOR, CHAINLINK_FORWARDER, MIN_CONFIDENCE, fee bps
+# No SETTLEMENT_TOKEN — uses mock USDC
+
+forge script script/DeployBetaTestnet.s.sol:DeployBetaTestnet \
+  --rpc-url $RPC_URL \
+  --broadcast \
+  --private-key $PRIVATE_KEY
 ```
 
 ### Verify on Snowscan (Fuji)
 
+**DeployTestnet** (hardcoded addresses):
+
 ```bash
-source .env.fuji
+source scripts/env/.env.fuji  # or .env.fuji at root
 chmod +x scripts/verify_fuji_snowtrace_stable.sh
 RETRIES=10 SLEEP=12 WATCH=1 scripts/verify_fuji_snowtrace_stable.sh
+```
+
+**DeployBetaTestnet** or generic broadcast-based:
+
+```bash
+source scripts/env/.env.fuji
+chmod +x scripts/verify_beta_fuji.sh
+WATCH=0 scripts/verify_beta_fuji.sh
+
+# Verify all 24 contracts + export ABIs to docs/abi/:
+./scripts/verify_and_export_abis_fuji.sh
+
+# Or ABI export only (no verification):
+./scripts/export_abis_to_docs.sh
+
+# Or use godmode for any broadcast:
+BROADCAST_FILE=broadcast/DeployBetaTestnet.s.sol/43113/run-latest.json scripts/verify_fuji_godmode.sh
 ```
 
 ---

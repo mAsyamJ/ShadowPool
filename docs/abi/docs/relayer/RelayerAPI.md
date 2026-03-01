@@ -1,6 +1,6 @@
 # Relayer CRE API
 
-**Last updated:** 2026-02-20  
+**Last updated:** 2026-03-01  
 **Source:** [creRoutes.ts](../../../../../../apps/relayer/src/api/creRoutes.ts)  
 **Context:** [RelayerOverview.md](RelayerOverview.md) | [CREWorkflowIntegration.md](../cre/CREWorkflowIntegration.md)
 
@@ -40,7 +40,7 @@ List sessions ready for finalization (`resolveTime <= now`).
 
 ### 2.2 GET /cre/sessions/:sessionId
 
-Get session payload for **legacy SessionFinalizer** format. Use `/cre/checkpoints/:sessionId` for Nitrolite Yellow (ChannelSettlement).
+Get session payload for **legacy SessionFinalizer** format. Use `/cre/checkpoints/:sessionId` for checkpoint (ChannelSettlement) path.
 
 **Params:** `sessionId` — session identifier (hex)
 

@@ -120,6 +120,18 @@ contract InvariantSolvencyTest is Test {
         channel.finalizeCheckpoint(mkId, sessionId, deltas);
     }
 
+    function testEscrowAvailableBalanceInvariant() public {
+        console2.log("[TEST] testEscrowAvailableBalanceInvariant");
+        ShadowTypes.Delta[] memory deltas = new ShadowTypes.Delta[](1);
+        deltas[0] = ShadowTypes.Delta({user: user, outcomeIndex: 0, sharesDelta: 10, cashDelta: -1000});
+        ShadowTypes.Checkpoint memory cp = _cp(deltas);
+
+        channel.submitCheckpoint(cp, deltas, _signCheckpoint(cp, operatorPk), _toArray(user), _toBytesArray(_signCheckpoint(cp, userPk)));
+
+        assertLe(vault.availableBalance(user), vault.freeBalance(user));
+        assertEq(vault.reservedBalance(user), 1000);
+    }
+
     function testLpFeeWithNoLpSupplyRoutesToTreasury() public {
         console2.log("[TEST] testLpFeeWithNoLpSupplyRoutesToTreasury");
         console2.log("[ARRANGE] LP fee share enabled while LP vault has zero supply");

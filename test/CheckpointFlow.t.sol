@@ -225,7 +225,7 @@ contract CheckpointFlowTest is Test {
         console2.log("[ASSERT] No final nonce yet and pending record replaced with nonce=6");
         assertEq(channel.latestNonce(marketId, sessionId), 0);
         bytes32 key = keccak256(abi.encode(marketId, sessionId));
-        (uint64 pendingNonce, , , , , , bool exists) = channel.pendingByKey(key);
+        (uint64 pendingNonce, , , , , , bool exists, , ) = channel.pendingByKey(key);
         assertTrue(exists);
         assertEq(pendingNonce, 6);
     }

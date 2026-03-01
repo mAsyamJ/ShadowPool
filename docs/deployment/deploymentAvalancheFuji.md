@@ -144,6 +144,50 @@ Set in apps/relayer/.env
 
 ---
 
+---
+
+## Beta Testnet (DeployBetaTestnet)
+
+DeployBetaTestnet deploys the full V3-Escrow stack with **mock tokens** (USDC, DAI, USDT, EURC, AVAX, IDRX) and a **Faucet** for beta testers. No real Fuji USDC is used.
+
+### Beta flow
+
+1. `faucet.claim(mockUSDC|mockDAI|mockUSDT|mockEURC|mockAVAX|mockIDRX)`
+2. `multiAssetVault.deposit(settlementToken, amount)`
+3. Trade (checkpoint submit reserves; finalize releases)
+
+### Beta contract addresses (verified)
+
+| Contract              | Address |
+| --------------------- | ------- |
+| MockUSDC (settlement) | 0x61c8d94ab8a729126a9FA41751FaD7F464604948 |
+| Faucet               | 0x4d74eCEc809D1DbbD8D4B9D1c26fFc8b8FbA9E89 |
+| ChannelSettlement    | 0xFA5D0e64B0B21374690345d4A88a9748C7E22182 |
+| CREReceiver          | 0x51c0680d8E9fFE2A2f6CC65e598280D617D6cAb7 |
+| CREPublishReceiver   | 0x3AA7E5A28A72Df248806397Ea16C03fB10c46830 |
+| MarketFactory        | 0x2f70602034854C14CBfD1F94C713f833d344d748 |
+| MarketRegistry       | 0x3235094A8826a6205F0A0b74E2370A4AC39c6Cc2 |
+| MultiAssetVault      | 0x71EEA55f90c028aEE2b0F0785d015ea4e9165aBF |
+| CollateralVault      | 0x792a065dD308A1Fc3d115Ea006b3093D8fBd7ea1 |
+| OutcomeToken1155     | 0x9B413811ecfD0e0679A7Ba785de44E15E7482044 |
+
+### Deploy Beta
+
+```bash
+source scripts/env/.env.fuji
+forge script script/DeployBetaTestnet.s.sol:DeployBetaTestnet \
+  --rpc-url $RPC_URL --broadcast --private-key $PRIVATE_KEY
+```
+
+### Verify Beta
+
+```bash
+source scripts/env/.env.fuji
+scripts/verify_beta_fuji.sh
+```
+
+---
+
 ## Verification (Foundry → Snowscan)
 
 Snowscan Fuji verification is available through a Routescan-hosted Etherscan-compatible API. Foundry verification works using a verifier URL and any placeholder api key string.
@@ -154,9 +198,10 @@ Verifier URL (Fuji)
 API key
 - ETHERSCAN_API_KEY=verifyContract
 
-Verify all contracts (recommended)
+Verify DeployTestnet (production)
 
 ```bash
 source .env.fuji
 chmod +x scripts/verify_fuji_snowtrace_stable.sh
 RETRIES=10 SLEEP=12 WATCH=1 scripts/verify_fuji_snowtrace_stable.sh
+```

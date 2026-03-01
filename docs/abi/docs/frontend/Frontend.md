@@ -1,10 +1,10 @@
 # RetroPick Frontend & UI/UX Integration Guide
 
-Last updated: 2026-02-20  
+Last updated: 2026-03-01  
 Audience: Frontend engineers building the RetroPick prediction market UI  
 Context: See [CurrentSmartContract.md](../CurrentSmartContract.md) for smart contract architecture details.
 
-**See also:** [CRE integration](../cre/CREOverview.md) | [Relayer / Nitrolite Yellow](../relayer/RelayerOverview.md) | [Relayer API](../relayer/RelayerAPI.md)
+**See also:** [SystemIntegration.md](SystemIntegration.md) | [CRE integration](../cre/CREOverview.md) | [Relayer](../relayer/RelayerOverview.md) | [Relayer API](../relayer/RelayerAPI.md) | [DeploymentConfig.md](DeploymentConfig.md)
 
 ---
 
@@ -62,7 +62,7 @@ flowchart TB
         Registry[MarketRegistry]
         DraftBoard[MarketDraftBoard]
         ClaimMgr[DraftClaimManager]
-        Ledger[ExecutionLedger]
+        OT[OutcomeToken1155]
         Vault[CollateralVault/MAV]
         Pool[PoolMarketLegacy]
     end
@@ -75,7 +75,7 @@ flowchart TB
     UI -->|"read: getMarket, getDraft"| Registry
     UI -->|"read: getDraft, draftCount"| DraftBoard
     UI -->|"write: claimAndSeed"| ClaimMgr
-    UI -->|"read: positionOf"| Ledger
+    UI -->|"read: balanceOf"| OT
     UI -->|"write: deposit, withdraw, redeem"| Vault
     UI -->|"write: predict, reduce, claim"| Pool
     UI -->|"GET/POST checkpoints, sign"| Relayer
@@ -98,9 +98,11 @@ flowchart TB
 | `LiquidityVault4626` | LP share display, deposit UI | LPs |
 | `MarketFactory` (via CREPublishReceiver) | Publish flow (backend/relayer-driven) | Creator |
 | `MarketRegistry` | Market list, market detail, status, redeem | All |
-| `ExecutionLedger` | Position display (shares per outcome) | Trader |
-| `CollateralVault` / `MultiAssetVault` | Deposit/withdraw, balance display | Trader |
+| `OutcomeToken1155` | Position display (shares per outcome, V3) | Trader |
+| `MarketRiskManager` | LP payout cap metrics (optional) | LP |
+| `CollateralVault` / `MultiAssetVault` | Deposit/withdraw, balance display; 3-bucket (free, reserved, available) | Trader |
 | `ChannelSettlement` | Checkpoint submit/finalize (relayer-driven) | Operator, Trader (sign) |
+| `Faucet` | Testnet token claims | Trader (testnet) |
 | `PoolMarketLegacy` | Direct predict/reduce/claim (legacy demo) | Trader |
 
 - `Proposed` → `Claimed` → `Published` | `Cancelled` | `Expired`
@@ -219,10 +221,15 @@ struct Market {
 | Contract | Method | Params | Returns |
 |----------|--------|--------|---------|
 | `CollateralVault` | `freeBalance(user)` | `address user` | `uint256` |
+| `CollateralVault` | `reservedBalance(user)` | `address user` | `uint256` |
 | `CollateralVault` | `lockedBalance(user, marketId, sessionId)` | `user`, `marketId`, `sessionId` | `uint256` |
 | `MultiAssetVault` | `freeBalance(user, asset)` | `address user`, `address asset` | `uint256` |
+| `MultiAssetVault` | `reservedBalance(user, asset)` | — | `uint256` |
 | `MultiAssetVault` | `lockedBalance(user, asset, marketId, sessionId)` | — | `uint256` |
-| `ExecutionLedger` | `positionOf(user, marketId, outcomeIndex)` | `user`, `marketId`, `outcomeIndex` | `int256` shares |
+| `OutcomeToken1155` | `balanceOf(account, id)` | `address account`, `uint256 id` | `uint256` shares |
+| `OutcomeToken1155` | `id(marketId, outcomeIndex)` | `marketId`, `outcomeIndex` | `uint256` token ID |
+
+**V3 vaults (3-bucket):** `availableBalance = freeBalance - reservedBalance`; withdraw requires `amount <= availableBalance`. Reserved during checkpoint challenge window.
 
 #### Events
 
@@ -231,12 +238,12 @@ struct Market {
 | `Deposited(user, amount)` / `Deposited(user, asset, amount)` | Balance refresh |
 | `Withdrawn(user, amount)` / `Withdrawn(user, asset, amount)` | Balance refresh |
 | `CashDeltasApplied(...)` | Position/balance changed after checkpoint |
-| `DeltasApplied(marketId, sessionId, deltaCount)` | Position changed |
+| `TransferSingle` (OutcomeToken1155) | Position mint/burn/transfer |
 
 #### UX Notes
 
-- Show free vs locked; per-asset if using MultiAssetVault
-- `positionOf` returns shares (int256); positive = long that outcome
+- Show free, reserved, available; per-asset if using MultiAssetVault
+- **V3:** Use `OutcomeToken1155.balanceOf(user, id(marketId, outcomeIndex))` for positions; `id` is pure: `(marketId << 32) | outcomeIndex`
 - For binary: outcome 0 = Yes, 1 = No
 
 - **GET** `/cre/checkpoints/:sessionId` — checkpoint spec (checkpoint, deltas, digest, users, chainId, channelSettlementAddress)
@@ -309,7 +316,7 @@ struct Market {
 | — | `hasRedeemed` | Not exposed onchain | Track `Redeemed` events or handle `AlreadyRedeemed` revert |
 | `MarketRegistry` | `getMarket(marketId)` | `marketId` | Includes `settled`, `outcome` |
 | `MarketRegistry` | `typedOutcomeIndex(marketId)` | `marketId` | Winning outcome index |
-| `ExecutionLedger` | `positionOf(user, marketId, winningOutcome)` | — | Winning shares |
+| `OutcomeToken1155` | `balanceOf(user, id(marketId, winningOutcome))` | — | Winning shares (V3) |
 
 #### Write Calls
 
@@ -326,9 +333,9 @@ struct Market {
 
 #### UX Notes
 
-- Show "Claim winnings" only when: `status == Resolved`, `positionOf(user, marketId, winningOutcome) > 0`. Track whether user already redeemed via `Redeemed` events (no onchain getter for `hasRedeemed`)
+- Show "Claim winnings" only when: `status == Resolved`, `OutcomeToken1155.balanceOf(user, id(marketId, winningOutcome)) > 0`. Track whether user already redeemed via `Redeemed` events (no onchain getter for `hasRedeemed`)
 - Redeem is one-shot per (marketId, user)
-- Payout comes from MultiAssetVault or CollateralVault depending on config
+- **V3:** Registry calls `outcomeToken.burnForRedeem`; payout from MultiAssetVault or CollateralVault depending on config
 
 #### UI Screens
 
@@ -393,7 +400,7 @@ struct Market {
 - Digest from relayer: `GET /cre/checkpoints/:sessionId` returns checkpoint spec including digest
 - Users sign the digest; send signatures in `POST /cre/checkpoints/:sessionId`
 
-From [yellowIntegration.md](../relayer/yellowIntegration.md):
+From [FrontendIntegration.md](../relayer/FrontendIntegration.md):
 - `CHANNEL_SETTLEMENT_ADDRESS` — for checkpoint path
 - `OPERATOR` — operator key (relayer-side, not frontend)
 
@@ -407,7 +414,7 @@ From [yellowIntegration.md](../relayer/yellowIntegration.md):
 
 - **Claim**: `seedAmount >= draft.minSeed`; `asset == draft.settlementAsset` or draft has no asset
 - **Predict (Legacy)**: Market not settled; amount > 0; correct outcome (or reduce first)
-- **Redeem**: Market resolved; `positionOf(user, marketId, winningOutcome) > 0`; user not yet redeemed (track via `Redeemed` events)
+- **Redeem**: Market resolved; `OutcomeToken1155.balanceOf(user, id(marketId, winningOutcome)) > 0`; user not yet redeemed (track via `Redeemed` events)
 - **Unlock seed**: `block.timestamp >= seedUnlockTime(draftId)`; `seedSharesLocked > 0`
 
 ```mermaid
@@ -418,7 +425,7 @@ sequenceDiagram
     participant ClaimMgr
     participant Relayer
     participant Registry
-    participant Ledger
+    participant OutcomeToken
     participant Vault
 
     Note over User,Vault: 1. Claim & Seed
@@ -438,7 +445,7 @@ sequenceDiagram
     Relayer->>Frontend: digest, users
     User->>Frontend: Sign checkpoint
     Frontend->>Relayer: POST userSigs
-    Relayer->>Ledger: finalize (via CRE)
+    Relayer->>OutcomeToken: finalize (via CRE)
 
     Note over User,Vault: 4. Resolve (oracle)
     Note over Registry: Oracle resolves via CRE
@@ -446,7 +453,7 @@ sequenceDiagram
     Note over User,Vault: 5. Redeem
     User->>Frontend: Claim winnings
     Frontend->>Registry: redeem(marketId)
-    Registry->>Ledger: positionOf
+    Registry->>OutcomeToken: burnForRedeem
     Registry->>Vault: redeemPayout
     Registry->>User: tokens
 ```
@@ -580,7 +587,7 @@ Trading in the curated path is **offchain** with checkpoint settlement. The fron
 5. User signs; frontend sends signatures to `POST /cre/checkpoints/:sessionId`.
 6. Relayer builds payload, sends to CRE workflow for onchain finalization.
 
-#### Relayer API (see [yellowIntegration.md](../relayer/yellowIntegration.md))
+#### Relayer API (see [FrontendIntegration.md](../relayer/FrontendIntegration.md))
 
 ---
 
@@ -631,7 +638,7 @@ Per-market ERC-4626 vault for LP liquidity. LPs deposit assets; fee donations in
 
 ## 6. Deployment-Dependent Configuration
 
-Frontend needs these per network:
+Frontend needs these per network. See [DeploymentConfig.md](DeploymentConfig.md) for Fuji addresses.
 
 | Config | Source | Use |
 |--------|--------|-----|
@@ -639,11 +646,12 @@ Frontend needs these per network:
 | MarketRegistry | Deploy output | Market reads/writes |
 | MarketDraftBoard | Deploy output | Draft reads |
 | DraftClaimManager | Deploy output | Claim, unlock |
+| OutcomeToken1155 | Deploy output | Position reads (V3) |
 | CollateralVault | Deploy output | Deposit, withdraw (single-asset) |
 | MultiAssetVault | Deploy output | Deposit, withdraw (multi-asset) |
-| ExecutionLedger | Deploy output | Position reads |
 | ChannelSettlement | Deploy output | Checkpoint flow, latestNonce |
 | LiquidityVaultFactory | Deploy output | Vault by draft |
+| Faucet | Deploy output | Testnet token claims |
 | Relayer URL | `.env` | `GET/POST /cre/checkpoints/:sessionId` |
 
 ---
@@ -749,10 +757,11 @@ struct Delta {
 3. **Publish** — Backend-driven; subscribe to `DraftPublished`, `MarketCreated`
 4. **Market list** — Index events or use backend; no `marketCount` onchain
 5. **Market detail** — `getMarket`, `status`, `marketType`, outcomes, timing
-6. **Balances** — `freeBalance`, `lockedBalance` (CollateralVault or MultiAssetVault)
-7. **Positions** — `ExecutionLedger.positionOf(user, marketId, outcomeIndex)`
+6. **Balances** — `freeBalance`, `reservedBalance`, `availableBalance` (3-bucket vaults; CollateralVault or MultiAssetVault)
+7. **Positions (V3)** — `OutcomeToken1155.balanceOf(user, id(marketId, outcomeIndex))` where `id = (marketId << 32) | outcomeIndex`
 8. **Trading (curated)** — Integrate relayer `GET/POST /cre/checkpoints/:sessionId`; user signs checkpoint
 9. **Trading (legacy)** — `predict`, `predictOutcome`, `reducePosition`, `reduceAll`; cannot add to opposite outcome without reducing first
-10. **Redeem** — `MarketRegistry.redeem(marketId)` when resolved and user has winning shares
+10. **Redeem** — `MarketRegistry.redeem(marketId)` when resolved and user has winning shares (check `OutcomeToken1155.balanceOf`)
 11. **LP vault** — ERC-4626 `deposit`/`withdraw`; display share balance and TVL
-12. **Errors** — Map contract reverts to user-friendly messages
+12. **Faucet (testnet)** — `Faucet.claim(token)` for mock tokens
+13. **Errors** — Map contract reverts to user-friendly messages; see [ErrorsReference.md](ErrorsReference.md)

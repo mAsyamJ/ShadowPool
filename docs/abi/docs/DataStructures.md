@@ -134,5 +134,5 @@ struct Market {
 
 ## 5. References
 
-- [NitroliteYellowCheckpoint.md](relayer/NitroliteYellowCheckpoint.md)
+- [CheckpointEIP712.md](relayer/CheckpointEIP712.md)
 - [CREReportFormats.md](cre/CREReportFormats.md)

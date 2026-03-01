@@ -1,6 +1,6 @@
 # MultiAssetVault – Frontend Integration
 
-Last updated: 2026-02-20  
+Last updated: 2026-03-01  
 ABI: `MultiAssetVault.json`  
 Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartContract.md)
 
@@ -8,7 +8,7 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 
 ## 1. Contract Purpose
 
-`MultiAssetVault` holds multi-asset collateral per user and asset. Used when deployment supports multiple settlement assets. Users deposit/withdraw per asset; `ChannelSettlement` locks/unlocks during checkpoint settlement.
+`MultiAssetVault` holds multi-asset collateral per user and asset. Used when deployment supports multiple settlement assets. Users deposit/withdraw per asset; `ChannelSettlement` locks/unlocks and reserves during checkpoint settlement. **V3-Escrow:** 3-bucket model — `freeBalance`, `reservedBalance`, `availableBalance = freeBalance - reservedBalance`. Withdraw requires `amount <= availableBalance`.
 
 ---
 
@@ -26,7 +26,9 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 
 | Method | Params | Returns | Use Case |
 |--------|--------|---------|----------|
-| `freeBalance` | `address user`, `address asset` | `uint256` | Available balance for asset |
+| `freeBalance` | `address user`, `address asset` | `uint256` | Total balance (free + reserved) |
+| `reservedBalance` | `address user`, `address asset` | `uint256` | Reserved for pending checkpoint |
+| `availableBalance` | `address user`, `address asset` | `uint256` | Withdrawable: freeBalance - reservedBalance |
 | `lockedBalance` | `user`, `asset`, `marketId`, `sessionId` | `uint256` | Locked in session |
 | `channelSettlement` | — | `address` | Settlement contract |
 | `marketRegistry` | — | `address` | Registry for redeem |
@@ -38,7 +40,7 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 | Method | Params | When Called | Pre-conditions |
 |--------|--------|-------------|----------------|
 | `deposit` | `address asset`, `uint256 amount` | User adds collateral | `asset.approve(MultiAssetVault, amount)` |
-| `withdraw` | `address asset`, `uint256 amount` | User removes collateral | `amount <= freeBalance(user, asset)` |
+| `withdraw` | `address asset`, `uint256 amount` | User removes collateral | `amount <= availableBalance(user, asset)` |
 
 `applyCashDeltas`, `lock`, `unlock`, `redeemPayout`, `transferAsset`, `transferToFeeCollector` are called only by `ChannelSettlement` or `MarketRegistry`.
 
@@ -64,6 +66,7 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 | Error | User-Friendly Message |
 |-------|------------------------|
 | `InsufficientFreeBalance` | Not enough balance; deposit first |
+| `InsufficientAvailableBalance` | Cannot withdraw: amount reserved for pending settlement |
 | `InsufficientLockedBalance` | Insufficient locked balance |
 | `InvalidAddress` | Invalid address |
 | `InvalidAmount` | Invalid amount |
@@ -78,7 +81,7 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 
 ## 7. Integration Notes
 
-- Show free vs locked per asset.
+- Show free, reserved, available per asset. Withdraw limited to available.
 - Settlement asset per market: `MarketRegistry.getSettlementAsset(marketId)`.
 - Approve each asset before `deposit`.
 - **Deployment config key**: `MultiAssetVault`

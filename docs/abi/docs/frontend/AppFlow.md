@@ -1,8 +1,8 @@
 # RetroPick Application Flow
 
-Last updated: 2026-02-20  
+Last updated: 2026-03-01  
 Audience: Frontend engineers  
-Context: See [Frontend.md](Frontend.md) and [CurrentSmartContract.md](../CurrentSmartContract.md).
+Context: See [Frontend.md](Frontend.md), [SystemIntegration.md](SystemIntegration.md), and [CurrentSmartContract.md](../CurrentSmartContract.md).
 
 ---
 
@@ -66,7 +66,7 @@ flowchart TB
         Registry[MarketRegistry]
         DraftBoard[MarketDraftBoard]
         ClaimMgr[DraftClaimManager]
-        Ledger[ExecutionLedger]
+        OT[OutcomeToken1155]
         Vault[CollateralVault / MultiAssetVault]
     end
 
@@ -78,7 +78,7 @@ flowchart TB
     UI -->|"read: getMarket, getDraft"| Registry
     UI -->|"read: getDraft, draftCount"| DraftBoard
     UI -->|"write: claimAndSeed"| ClaimMgr
-    UI -->|"read: positionOf"| Ledger
+    UI -->|"read: balanceOf"| OT
     UI -->|"write: deposit, withdraw, redeem"| Vault
     UI -->|"GET/POST checkpoints, sign"| Relayer
     Relayer --> CRE
@@ -105,8 +105,8 @@ flowchart TB
 | 1 | Deposit collateral | `CollateralVault.deposit` or `MultiAssetVault.deposit` |
 | 2 | Place order | Via relayer (offchain) |
 | 3 | Sign checkpoint | Relayer `GET /cre/checkpoints/:sessionId` → user signs digest → `POST` signatures |
-| 4 | View positions | `ExecutionLedger.positionOf(user, marketId, outcomeIndex)` |
-| 5 | Claim winnings | `MarketRegistry.redeem(marketId)` when resolved and user has winning shares |
+| 4 | View positions | `OutcomeToken1155.balanceOf(user, id(marketId, outcomeIndex))` — token ID from `id(marketId, outcomeIndex)` |
+| 5 | Claim winnings | `MarketRegistry.redeem(marketId)` when resolved and user has winning shares (check `OutcomeToken1155.balanceOf`) |
 
 ### 4.3 LP (Liquidity Provider)
 
@@ -200,7 +200,7 @@ Trading in the curated path is offchain with checkpoint settlement. The frontend
 
 ## 8. Contract Wiring (Deployment Config)
 
-Frontend needs these per network:
+Frontend needs these per network. See [DeploymentConfig.md](DeploymentConfig.md) for Fuji addresses.
 
 | Config | Source | Use |
 |--------|--------|-----|
@@ -208,11 +208,12 @@ Frontend needs these per network:
 | MarketRegistry | Deploy output | Market reads/writes |
 | MarketDraftBoard | Deploy output | Draft reads |
 | DraftClaimManager | Deploy output | Claim, unlock |
+| OutcomeToken1155 | Deploy output | Position reads (V3) |
 | CollateralVault | Deploy output | Deposit, withdraw (single-asset) |
 | MultiAssetVault | Deploy output | Deposit, withdraw (multi-asset) |
-| ExecutionLedger | Deploy output | Position reads |
 | ChannelSettlement | Deploy output | Checkpoint flow, latestNonce |
 | LiquidityVaultFactory | Deploy output | Vault by draft |
+| Faucet | Deploy output | Testnet token claims |
 | Relayer URL | `.env` | `GET/POST /cre/checkpoints/:sessionId` |
 
 ---
@@ -230,5 +231,7 @@ Frontend needs these per network:
 ## 10. References
 
 - [Frontend.md](Frontend.md) — Full frontend integration guide
+- [SystemIntegration.md](SystemIntegration.md) — SC + Relayer + CRE overview
+- [DeploymentConfig.md](DeploymentConfig.md) — Fuji addresses and env
 - [CurrentSmartContract.md](../CurrentSmartContract.md) — Smart contract architecture
 - Per-ABI docs in this folder — Detailed integration for each contract

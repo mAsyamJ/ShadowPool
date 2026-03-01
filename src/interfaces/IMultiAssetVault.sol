@@ -8,7 +8,12 @@ interface IMultiAssetVault {
     function withdraw(address asset, uint256 amount) external;
 
     function freeBalance(address user, address asset) external view returns (uint256);
+    function reservedBalance(address user, address asset) external view returns (uint256);
+    function availableBalance(address user, address asset) external view returns (uint256);
     function lockedBalance(address user, address asset, uint256 marketId, bytes32 sessionId) external view returns (uint256);
+
+    function reserve(address user, address asset, uint256 amount) external;
+    function release(address user, address asset, uint256 amount) external;
 
     function lock(address user, address asset, uint256 marketId, bytes32 sessionId, uint256 amount) external;
     function unlock(address user, address asset, uint256 marketId, bytes32 sessionId, uint256 amount) external;

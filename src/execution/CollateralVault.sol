@@ -23,6 +23,7 @@ contract CollateralVault is ICollateralVault, Ownable {
     address public marketRegistry;
 
     mapping(address => uint256) private _freeBalance;
+    mapping(address => uint256) private _reservedBalance;
     mapping(bytes32 => uint256) private _lockedBalance; // keccak256(user, marketId, sessionId) => amount
 
     event Deposited(address indexed user, uint256 amount);
@@ -32,6 +33,8 @@ contract CollateralVault is ICollateralVault, Ownable {
     event ChannelSettlementUpdated(address indexed previous, address indexed current);
     event MarketRegistryUpdated(address indexed previous, address indexed current);
     event CashDeltasApplied(uint256 indexed marketId, bytes32 indexed sessionId, uint256 userCount);
+    event Reserved(address indexed user, uint256 amount);
+    event Released(address indexed user, uint256 amount);
 
     error OnlyChannelSettlement();
     error InsufficientFreeBalance();
@@ -68,14 +71,49 @@ contract CollateralVault is ICollateralVault, Ownable {
 
     function withdraw(uint256 amount) external override {
         if (amount == 0) revert Errors.InvalidAmount();
-        if (_freeBalance[msg.sender] < amount) revert InsufficientFreeBalance();
-        _freeBalance[msg.sender] -= amount;
+        uint256 free = _freeBalance[msg.sender];
+        uint256 reserved = _reservedBalance[msg.sender];
+        if (free < reserved + amount) revert Errors.InsufficientAvailableBalance();
+        _freeBalance[msg.sender] = free - amount;
         TOKEN_CONTRACT.safeTransfer(msg.sender, amount);
         emit Withdrawn(msg.sender, amount);
     }
 
     function freeBalance(address user) external view override returns (uint256) {
         return _freeBalance[user];
+    }
+
+    function reservedBalance(address user) external view override returns (uint256) {
+        return _reservedBalance[user];
+    }
+
+    function availableBalance(address user) external view override returns (uint256) {
+        uint256 free = _freeBalance[user];
+        uint256 reserved = _reservedBalance[user];
+        return free > reserved ? free - reserved : 0;
+    }
+
+    function reserve(address user, uint256 amount) external override {
+        if (msg.sender != channelSettlement) revert OnlyChannelSettlement();
+        if (amount == 0) revert Errors.InvalidAmount();
+
+        uint256 free = _freeBalance[user];
+        uint256 res = _reservedBalance[user];
+        if (free < res + amount) revert Errors.InsufficientAvailableBalance();
+
+        _reservedBalance[user] = res + amount;
+        emit Reserved(user, amount);
+    }
+
+    function release(address user, uint256 amount) external override {
+        if (msg.sender != channelSettlement) revert OnlyChannelSettlement();
+        if (amount == 0) revert Errors.InvalidAmount();
+
+        uint256 res = _reservedBalance[user];
+        if (res < amount) revert Errors.InsufficientReservedBalance();
+
+        _reservedBalance[user] = res - amount;
+        emit Released(user, amount);
     }
 
     function lockedBalance(address user, uint256 marketId, bytes32 sessionId) external view override returns (uint256) {

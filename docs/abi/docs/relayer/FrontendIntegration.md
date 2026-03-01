@@ -1,13 +1,13 @@
-# Nitrolite Yellow Integration (Frontend)
+# Frontend Integration
 
-**Last updated:** 2026-02-20  
+**Last updated:** 2026-03-01  
 **Audience:** Frontend engineers integrating checkpoint signing and trading UX
 
 ---
 
 ## What You Need to Know
 
-**Nitrolite Yellow** = off-chain trading + checkpoint settlement. Users trade via the relayer (gasless); checkpoints periodically commit state to the chain. The frontend:
+Off-chain trading uses **checkpoint-based settlement**. Users trade via the relayer (gasless); checkpoints periodically commit state to the chain. The frontend:
 
 1. Lets users trade via relayer API (or a UI that calls it)
 2. Prompts users to **sign checkpoint digests** when the relayer/CRE workflow requests signatures
@@ -19,12 +19,12 @@
 
 ## Quick Reference
 
-For Nitrolite Yellow (checkpoint-based settlement), the frontend integrates with the **relayer** API and prompts users to sign checkpoints. Key resources:
+For checkpoint-based settlement, the frontend integrates with the **relayer** API and prompts users to sign checkpoints. Key resources:
 
 | Topic | Document |
 |-------|----------|
 | **Overview** | [RelayerOverview.md](RelayerOverview.md) |
-| **Checkpoint format** | [NitroliteYellowCheckpoint.md](NitroliteYellowCheckpoint.md) |
+| **Checkpoint format** | [CheckpointEIP712.md](CheckpointEIP712.md) |
 | **API specs** | [RelayerAPI.md](RelayerAPI.md) |
 | **Configuration** | [RelayerConfiguration.md](RelayerConfiguration.md) |
 
@@ -36,7 +36,7 @@ For Nitrolite Yellow (checkpoint-based settlement), the frontend integrates with
 2. **Checkpoint ready** — Relayer has session state; CRE/workflow fetches `GET /cre/checkpoints/:sessionId` to get digest and users.
 3. **User signs** — Frontend prompts user to sign checkpoint digest (EIP-712). Send signatures to `POST /cre/checkpoints/:sessionId` with `{ userSigs: { [address]: "0x..." } }`.
 4. **Relayer returns** — `0x03`-prefixed payload for CRE. Workflow delivers on-chain; frontend does not call contracts.
-5. **After finalize** — Subscribe to `CheckpointFinalized`; refresh `ExecutionLedger.positionOf` and vault balances.
+5. **After finalize** — Subscribe to `CheckpointFinalized`; refresh `OutcomeToken1155` positions and vault balances.
 
 ---
 
@@ -52,6 +52,6 @@ For Nitrolite Yellow (checkpoint-based settlement), the frontend integrates with
 
 ## See Also
 
-- [RelayerOverview.md](RelayerOverview.md) — Nitrolite Yellow vs Legacy, lifecycle
-- [NitroliteYellowCheckpoint.md](NitroliteYellowCheckpoint.md) — Checkpoint/Delta structs, EIP-712
+- [RelayerOverview.md](RelayerOverview.md) — Lifecycle and key concepts
+- [CheckpointEIP712.md](CheckpointEIP712.md) — Checkpoint/Delta structs, EIP-712
 - [CREOverview.md](../cre/CREOverview.md) — Why relayer goes through CRE

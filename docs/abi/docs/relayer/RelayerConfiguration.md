@@ -1,83 +1,79 @@
 # Relayer Configuration
 
-**Last updated:** 2026-02-20  
-**Source:** [.env.example](../../../../../../apps/relayer/.env.example) | [nitroliteClient.ts](../../../../../../apps/relayer/src/yellow/nitroliteClient.ts)  
-**Context:** [RelayerOverview.md](RelayerOverview.md)
+**Last updated:** 2026-03-01  
+**Context:** [RelayerOverview.md](RelayerOverview.md) | [StandaloneRelayerPlan.md](StandaloneRelayerPlan.md)
 
 ---
 
 ## 1. Overview
 
-The relayer uses `@erc7824/nitrolite` v0.5.x for NitroliteClient. Configuration is via environment variables. Two modes:
+The relayer supports two modes:
 
 | Mode | Required env | Purpose |
 |------|--------------|---------|
-| **Nitrolite Yellow (checkpoint path)** | `CHANNEL_SETTLEMENT_ADDRESS`, `OPERATOR_PRIVATE_KEY` | Build and sign checkpoints for ChannelSettlement |
-| **NitroliteClient (Yellow Network)** | `OPERATOR_PRIVATE_KEY`, optionally `CUSTODY_ADDRESS`, `ADJUDICATOR_ADDRESS` | Full Nitrolite channel setup; optional for basic relayer |
+| **Standalone (ChannelSettlement path)** | `CHANNEL_SETTLEMENT_ADDRESS`, `OPERATOR_PRIVATE_KEY` | Build and sign checkpoints for ChannelSettlement; no Nitrolite |
+| **Nitrolite / Yellow (optional)** | `OPERATOR_PRIVATE_KEY`, optionally `CUSTODY_ADDRESS`, `ADJUDICATOR_ADDRESS`, `YELLOW_WS_URL` | Full Nitrolite channel setup; optional for basic relayer |
 
 ---
 
 ## 2. Environment Variables
 
-### 2.1 Required for Nitrolite Yellow (ChannelSettlement Path)
+### 2.1 Required for Standalone (Checkpoint Path)
 
 | Variable | Description |
 |----------|-------------|
 | `CHANNEL_SETTLEMENT_ADDRESS` | ChannelSettlement contract address. Required for `GET/POST /cre/checkpoints/:sessionId`. If unset, endpoints return 503. |
 | `OPERATOR_PRIVATE_KEY` | Private key for operator; signs checkpoints. Must match `ChannelSettlement.operator`. Required for `POST /cre/checkpoints/:sessionId`. |
 
-### 2.2 Nitrolite / Yellow Network (Optional)
+### 2.2 Chain / RPC (Standalone + Finalizer)
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `CUSTODY_ADDRESS` | Nitrolite custody contract | `0x...01` |
-| `ADJUDICATOR_ADDRESS` | Nitrolite adjudicator contract | `0x...02` |
 | `CHAIN_ID` | Chain ID for EIP-712 checkpoint signing | `11155111` (Sepolia) |
-| `RPC_URL` | RPC endpoint | — |
-| `ALCHEMY_RPC_URL` | Alternate RPC | — |
-| `CHALLENGE_DURATION` | Challenge window seconds (Nitrolite) | `3600` |
+| `RPC_URL` | RPC endpoint (for finalizer if used) | — |
 
-### 2.3 Server
+### 2.3 Nitrolite / Yellow (Optional)
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `CUSTODY_ADDRESS` | Nitrolite custody contract | — |
+| `ADJUDICATOR_ADDRESS` | Nitrolite adjudicator contract | — |
+| `YELLOW_WS_URL` | Yellow WebSocket (e.g. clearnet sandbox) | — |
+| `CHALLENGE_DURATION` | Challenge window (Nitrolite) | `3600` |
+
+### 2.4 Server
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `RELAYER_PORT` | HTTP server port | `8790` |
-| `YELLOW_WS_URL` | Yellow WebSocket (e.g. clearnet sandbox) | `wss://clearnet-sandbox.yellow.com/ws` |
 
 ---
 
-## 3. NitroliteClient Setup
+## 3. Standalone Mode
 
-When `OPERATOR_PRIVATE_KEY` is set, the relayer creates a NitroliteClient ([nitroliteClient.ts](../../../../../../apps/relayer/src/yellow/nitroliteClient.ts)):
+With only `CHANNEL_SETTLEMENT_ADDRESS` and `OPERATOR_PRIVATE_KEY`:
 
-| Config | Source | Role |
-|--------|--------|------|
-| **WalletStateSigner** | `privateKeyToAccount(OPERATOR_PRIVATE_KEY)` | Signs channel state updates |
-| **publicClient** | viem `createPublicClient` (RPC) | Chain reads |
-| **walletClient** | viem `createWalletClient` with operator account | Transaction signing |
-| **addresses** | `CUSTODY_ADDRESS`, `ADJUDICATOR_ADDRESS` | Nitrolite contract addresses |
-| **challengeDuration** | `CHALLENGE_DURATION` (default 3600) | Challenge window in seconds |
+- Checkpoint API works: `GET/POST /cre/checkpoints/:sessionId`
+- Operator signs via viem `signTypedData`
+- No NitroliteClient, no Yellow WebSocket
 
-The NitroliteClient manages custody, adjudicator, and channel lifecycle per ERC-7824. If `OPERATOR_PRIVATE_KEY` is not set, NitroliteClient is disabled; the checkpoint API still works if `CHANNEL_SETTLEMENT_ADDRESS` is set (operator signs via the same key when provided).
+See [StandaloneRelayerPlan.md](StandaloneRelayerPlan.md) for full standalone design.
 
 ---
 
-## 4. Nitrolite Contract Addresses
+## 4. Nitrolite Mode (Optional)
 
-For full Yellow Network integration, deploy or use Nitrolite's contracts:
+When Nitrolite contracts and Yellow are configured:
 
-- **ChannelHub** — Central entry for channel operations
-- **ChannelEngine** — State verification and transition validation
-- **Custody** — Asset custody (configurable via `CUSTODY_ADDRESS`)
-- **Adjudicator** — Dispute resolution (configurable via `ADJUDICATOR_ADDRESS`)
-
-See [Nitrolite deployments](https://github.com/erc7824/nitrolite/tree/main/contracts/deployments) for addresses per chain. RetroPick's relayer uses placeholder defaults (`0x...01`, `0x...02`) if not set; replace with deployed addresses for production.
+- `NitroliteClient` may be created (custody, adjudicator, channel lifecycle)
+- Yellow WebSocket may connect for clearnet updates
+- **Checkpoint signing still uses viem**; Nitrolite is not used for checkpoint EIP-712
 
 ---
 
 ## 5. Deployment Consistency
 
-For Avalanche Fuji (or any network):
+For any network (e.g. Avalanche Fuji):
 
 1. Deploy via `script/DeployTestnet.s.sol` with `OPERATOR` = address derived from `OPERATOR_PRIVATE_KEY`.
 2. Set `CHANNEL_SETTLEMENT_ADDRESS` in relayer `.env` to the deployed ChannelSettlement address.
@@ -87,6 +83,5 @@ For Avalanche Fuji (or any network):
 
 ## 6. References
 
-- [.env.example](../../../../../../apps/relayer/.env.example)
-- [nitroliteClient.ts](../../../../../../apps/relayer/src/yellow/nitroliteClient.ts)
-- [deploymentAvalancheFuji.md](../../../deployment/deploymentAvalancheFuji.md)
+- [StandaloneRelayerPlan.md](StandaloneRelayerPlan.md) — Nitrolite removal, minimal env
+- [RelayerArchitecture.md](RelayerArchitecture.md) — Architecture and lifecycle

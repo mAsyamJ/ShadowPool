@@ -8,7 +8,12 @@ interface ICollateralVault {
     function withdraw(uint256 amount) external;
 
     function freeBalance(address user) external view returns (uint256);
+    function reservedBalance(address user) external view returns (uint256);
+    function availableBalance(address user) external view returns (uint256);
     function lockedBalance(address user, uint256 marketId, bytes32 sessionId) external view returns (uint256);
+
+    function reserve(address user, uint256 amount) external;
+    function release(address user, uint256 amount) external;
 
     function lock(address user, uint256 marketId, bytes32 sessionId, uint256 amount) external;
     function unlock(address user, uint256 marketId, bytes32 sessionId, uint256 amount) external;

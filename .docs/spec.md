@@ -501,3 +501,83 @@ function redeem(uint256 marketId) external override returns (uint256 payout) {
 | 1 share redeems to | 1 unit settlement asset (fixed 1:1) |
 | >2 outcomes? | Yes (Binary, Categorical, Timeline; maxOutcomes=64) |
 | LP risk bound? | No on-chain formula; implicit = vault balance |
+
+---
+
+## Part 4: Implementation Diff Checklist (ERC-1155 / OZ v5)
+
+> Tight checklist for OutcomeToken1155 transfer-lock and minimal MarketRegistry interface. OZ v5 uses `_update` (no `_beforeTokenTransfer`).
+
+### 4.1 OutcomeToken1155 — `_update` Override (OZ v5)
+
+**Exact signature:**
+
+```solidity
+function _update(
+    address from,
+    address to,
+    uint256[] memory ids,
+    uint256[] memory values
+) internal virtual override
+```
+
+**Logic:**
+- If `from != address(0) && to != address(0)` → transfer (not mint/burn).
+- For each `ids[i]`:
+  - Decode: `marketId = ids.unsafeMemoryAccess(i) >> 32`, `outcomeIndex = uint32(ids.unsafeMemoryAccess(i))`
+  - Require: `IMarketRegistry(marketRegistry).status(marketId) == IMarketRegistry.Status.Resolved`
+  - Else revert `Errors.TransferLocked()`
+- Call `super._update(from, to, ids, values)`
+
+**Dependencies:** `IMarketRegistry.status(marketId)`.
+
+---
+
+### 4.2 IMarketRegistry — Minimal Interface for OutcomeToken1155
+
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `status` | `function status(uint256 marketId) external view returns (Status)` | Transfer lock: allow transfers only when `Resolved` |
+| `numOutcomes` | `function numOutcomes(uint256 marketId) external view returns (uint32)` | Optional: validate `outcomeIndex < numOutcomes` in tokenId |
+
+**`numOutcomes` implementation (MarketRegistry):**
+- `Binary` → `2`
+- `Categorical` → `uint32(categoricalOutcomes[marketId].length)`
+- `Timeline` → `uint32(timelineWindows[marketId].length)`
+
+**Note:** Current `OutcomeToken1155` only uses `status`. Add `numOutcomes` if you want outcome-index bounds checks in `_update`.
+
+---
+
+### 4.3 Checklist Summary
+
+| # | Task | Status |
+|---|------|--------|
+| 1 | Override `_update(address from, address to, uint256[] memory ids, uint256[] memory values)` in OutcomeToken1155 | Done (current code) |
+| 2 | Decode `marketId = id >> 32` per tokenId | Done |
+| 3 | Query `mr.status(marketId)`; revert if not Resolved for user→user transfers | Done |
+| 4 | Add `numOutcomes(uint256 marketId)` to IMarketRegistry | Pending |
+| 5 | Implement `numOutcomes` in MarketRegistry (Binary→2, Categorical→length, Timeline→length) | Pending |
+| 6 | (Optional) In `_update`, add `outcomeIndex < mr.numOutcomes(marketId)` check | Pending |
+
+---
+
+## Part 5: Escrow-Safe Implementation Diff Checklist
+
+> Exact Solidity-level patches for escrow safety (reserve-on-submit, release-on-finalize). See `.docs/escrowPlan.md` for full design rationale.
+
+### 5.1 Planned Code Diffs
+
+| # | Patch | Scope |
+|---|-------|-------|
+| 1 | **MultiAssetVault** | Storage + reserve/release + withdraw checks |
+| 2 | **ChannelSettlement.submitCheckpoint** | Reserve compute + store in Pending |
+| 3 | **ChannelSettlement** replace-pending logic | Release old reserves when new checkpoint replaces pending |
+| 4 | **cancelPendingCheckpoint()** | Escape hatch: release reserves + delete pending after timeout |
+
+### 5.2 Inputs Required
+
+To produce patches matching exact Errors/events style and storage patterns:
+
+- `submitCheckpoint` / `submitCheckpointFromPayload` implementation
+- `Pending` struct definition

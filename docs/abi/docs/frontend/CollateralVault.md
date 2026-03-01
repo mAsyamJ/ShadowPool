@@ -1,6 +1,6 @@
 # CollateralVault – Frontend Integration
 
-Last updated: 2026-02-20  
+Last updated: 2026-03-01  
 ABI: `CollateralVault.json`  
 Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartContract.md)
 
@@ -8,7 +8,7 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 
 ## 1. Contract Purpose
 
-`CollateralVault` holds single-asset collateral for traders. Users deposit and withdraw; `ChannelSettlement` locks/unlocks during checkpoint settlement. Used when deployment uses single-asset mode (no `MultiAssetVault`).
+`CollateralVault` holds single-asset collateral for traders. Users deposit and withdraw; `ChannelSettlement` locks/unlocks and reserves during checkpoint settlement. **V3-Escrow:** 3-bucket model — `freeBalance`, `reservedBalance`, `availableBalance = freeBalance - reservedBalance`. Withdraw requires `amount <= availableBalance`. Reserved amounts back pending checkpoint debits. Used when deployment uses single-asset mode (no `MultiAssetVault`).
 
 ---
 
@@ -26,7 +26,9 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 
 | Method | Params | Returns | Use Case |
 |--------|--------|---------|----------|
-| `freeBalance` | `address user` | `uint256` | Available balance |
+| `freeBalance` | `address user` | `uint256` | Total balance (free + reserved) |
+| `reservedBalance` | `address user` | `uint256` | Reserved for pending checkpoint |
+| `availableBalance` | `address user` | `uint256` | Withdrawable: freeBalance - reservedBalance (if exposed) |
 | `lockedBalance` | `address user`, `uint256 marketId`, `bytes32 sessionId` | `uint256` | Locked in session |
 | `token` / `TOKEN_CONTRACT` | — | `address` | Underlying ERC20 |
 | `channelSettlement` | — | `address` | Settlement contract |
@@ -39,7 +41,7 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 | Method | Params | When Called | Pre-conditions |
 |--------|--------|-------------|----------------|
 | `deposit` | `uint256 amount` | User adds collateral | `token.approve(CollateralVault, amount)` |
-| `withdraw` | `uint256 amount` | User removes collateral | `amount <= freeBalance(user)` |
+| `withdraw` | `uint256 amount` | User removes collateral | `amount <= availableBalance` (freeBalance - reservedBalance) |
 
 `applyCashDeltas`, `lock`, `unlock`, `redeemPayout`, `transferToFeeCollector` are called only by `ChannelSettlement` or `MarketRegistry`.
 
@@ -65,6 +67,7 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 | Error | User-Friendly Message |
 |-------|------------------------|
 | `InsufficientFreeBalance` | Not enough balance; deposit first |
+| `InsufficientAvailableBalance` | Cannot withdraw: amount reserved for pending settlement |
 | `InsufficientLockedBalance` | Insufficient locked balance |
 | `InvalidAddress` | Invalid address |
 | `InvalidAmount` | Invalid amount |
@@ -79,7 +82,7 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 
 ## 7. Integration Notes
 
-- Show free vs locked; per-user only (single asset).
+- Show free, reserved, available; per-user only (single asset). Withdraw limited to available.
 - Approve `token` to `CollateralVault` before `deposit`.
 - **Deployment config key**: `CollateralVault`
 

@@ -1,6 +1,6 @@
 # Integration Matrix
 
-**Last updated:** 2026-02-20  
+**Last updated:** 2026-03-01  
 **Context:** [CurrentSmartContract.md](CurrentSmartContract.md) | [CREOverview.md](cre/CREOverview.md)
 
 ---
@@ -9,7 +9,7 @@
 
 | Receiver | Report Prefix | Report Type | On-Chain Target | Action |
 |----------|---------------|-------------|-----------------|--------|
-| CREReceiver | `0x03` | Session (Nitrolite Yellow) | ChannelSettlement | `submitCheckpointFromPayload` |
+| CREReceiver | `0x03` | Session (checkpoint) | ChannelSettlement | `submitCheckpointFromPayload` |
 | CREReceiver | (default) | Outcome | MarketRegistry / PoolMarketLegacy | `onReport(0x01...)` / resolve |
 | CREPublishReceiver | `0x04` (optional) | Publish from draft | MarketFactory | `createFromDraft` |
 

@@ -2,13 +2,19 @@
 pragma solidity 0.8.24;
 
 /// @title DeployBetaTestnet
-/// @notice Deploys the full testnet stack with MockUSDC + Faucet for beta testers.
-/// @dev Beta users: claim mock USDC from Faucet, then deposit into MultiAssetVault/CollateralVault to trade.
-///      Reuses DeployTestnet topology; SETTLEMENT_TOKEN is replaced by deployed MockUSDC.
+/// @notice Deploys the full V3-Escrow testnet stack with all mock tokens (USDC, DAI, USDT, EURC, AVAX, IDRX) + Faucet for beta testers.
+/// @dev Topology: OutcomeToken1155 + MarketRiskManager + escrow-safe vaults (reserve-on-submit, release-on-finalize).
+///      Beta users: claim mock USDC from Faucet -> deposit into MultiAssetVault(settlementToken) -> trade.
+///      CollateralVault is fallback when MAV not used; in this deploy MAV is primary.
 
 import {Script, console2} from "forge-std/Script.sol";
 
 import {MockUSDC} from "../src/mockTest/token/MockUSDC.sol";
+import {MockDAI} from "../src/mockTest/token/MockDAI.sol";
+import {MockUSDT} from "../src/mockTest/token/MockUSDT.sol";
+import {MockEURC} from "../src/mockTest/token/MockEURC.sol";
+import {MockAVAX} from "../src/mockTest/token/MockAVAX.sol";
+import {MockIDRX} from "../src/mockTest/token/MockIDRX.sol";
 import {Faucet} from "../src/mockTest/faucet/Faucet.sol";
 
 import {OutcomeToken1155} from "../src/execution/OutcomeToken1155.sol";
@@ -37,6 +43,11 @@ import {MarketFactory} from "../src/core/MarketFactory.sol";
 contract DeployBetaTestnet is Script {
     struct Deployed {
         MockUSDC mockUSDC;
+        MockDAI mockDAI;
+        MockUSDT mockUSDT;
+        MockEURC mockEURC;
+        MockAVAX mockAVAX;
+        MockIDRX mockIDRX;
         Faucet faucet;
         OutcomeToken1155 outcomeToken;
         MarketRiskManager riskManager;
@@ -89,16 +100,25 @@ contract DeployBetaTestnet is Script {
 
         vm.startBroadcast();
 
-        // 0) Mock token + Faucet (beta test only)
+        // 0) All mock tokens + Faucet (beta test only)
         d.mockUSDC = new MockUSDC();
+        d.mockDAI = new MockDAI();
+        d.mockUSDT = new MockUSDT();
+        d.mockEURC = new MockEURC();
+        d.mockAVAX = new MockAVAX();
+        d.mockIDRX = new MockIDRX();
         d.faucet = new Faucet(msg.sender);
 
-        d.mockUSDC.mint(address(d.faucet), faucetMintSupply);
-        d.faucet.setToken(address(d.mockUSDC), true, faucetAmountPerClaim, faucetCooldownSecs);
+        _setupFaucetToken(d.faucet, address(d.mockUSDC), faucetAmountPerClaim, faucetMintSupply, faucetCooldownSecs);
+        _setupFaucetToken(d.faucet, address(d.mockDAI), uint96(_amountWithDecimals(1000, 18)), _amountWithDecimals(1_000_000, 18), faucetCooldownSecs);
+        _setupFaucetToken(d.faucet, address(d.mockUSDT), faucetAmountPerClaim, faucetMintSupply, faucetCooldownSecs);
+        _setupFaucetToken(d.faucet, address(d.mockEURC), faucetAmountPerClaim, faucetMintSupply, faucetCooldownSecs);
+        _setupFaucetToken(d.faucet, address(d.mockAVAX), uint96(_amountWithDecimals(1000, 18)), _amountWithDecimals(1_000_000, 18), faucetCooldownSecs);
+        _setupFaucetToken(d.faucet, address(d.mockIDRX), uint96(_amountWithDecimals(1000, 18)), _amountWithDecimals(1_000_000, 18), faucetCooldownSecs);
 
         address settlementToken = address(d.mockUSDC);
 
-        // 1) V3 Execution lane: OutcomeToken1155 + MarketRiskManager
+        // 1) V3-Escrow Execution lane: OutcomeToken1155 + MarketRiskManager + escrow-safe vaults
         d.outcomeToken = new OutcomeToken1155("https://api.retropick.xyz/outcome/{id}.json");
         d.riskManager = new MarketRiskManager();
         d.multiAssetVault = new MultiAssetVault(address(0));
@@ -194,6 +214,22 @@ contract DeployBetaTestnet is Script {
         return d;
     }
 
+    function _setupFaucetToken(
+        Faucet faucet,
+        address token,
+        uint96 amountPerClaim,
+        uint256 mintSupply,
+        uint32 cooldownSecs
+    ) internal {
+        (bool ok, ) = token.call(abi.encodeWithSignature("mint(address,uint256)", address(faucet), mintSupply));
+        require(ok, "mint failed");
+        faucet.setToken(token, true, amountPerClaim, cooldownSecs);
+    }
+
+    function _amountWithDecimals(uint256 amount, uint8 decimals) internal pure returns (uint256) {
+        return amount * (10 ** decimals);
+    }
+
     function _configureReceiverTemplate(
         address receiver,
         address expectedAuthor,
@@ -219,6 +255,11 @@ contract DeployBetaTestnet is Script {
     function _log(Deployed memory d) internal view {
         console2.log("deployer", msg.sender);
         console2.log("MockUSDC", address(d.mockUSDC));
+        console2.log("MockDAI", address(d.mockDAI));
+        console2.log("MockUSDT", address(d.mockUSDT));
+        console2.log("MockEURC", address(d.mockEURC));
+        console2.log("MockAVAX", address(d.mockAVAX));
+        console2.log("MockIDRX", address(d.mockIDRX));
         console2.log("Faucet", address(d.faucet));
         console2.log("OutcomeToken1155", address(d.outcomeToken));
         console2.log("MarketRiskManager", address(d.riskManager));
@@ -240,8 +281,13 @@ contract DeployBetaTestnet is Script {
         console2.log("MarketFactory", address(d.marketFactory));
         console2.log("CREPublishReceiver", address(d.crePublishReceiver));
         console2.log("");
-        console2.log("--- Beta test: claim mock USDC from Faucet ---");
-        console2.log("   faucet.claim(mockUSDC) -> deposit into CollateralVault / MultiAssetVault -> trade");
+        console2.log("--- Beta test flow ---");
+        console2.log("   1. faucet.claim(mockUSDC|mockDAI|mockUSDT|mockEURC|mockAVAX|mockIDRX)");
+        console2.log("   2. multiAssetVault.deposit(settlementToken, amount)");
+        console2.log("   3. trade (checkpoint submit reserves; finalize releases)");
+        console2.log("");
+        console2.log("--- Escrow (V3-Escrow) ---");
+        console2.log("   Reserve on submit, release on finalize/cancel. CANCEL_DELAY=6h for stuck pending.");
         console2.log("");
         console2.log("--- Post-deploy checklist ---");
         console2.log("1. Relayer (apps/relayer/.env): CHANNEL_SETTLEMENT_ADDRESS=%s", address(d.channelSettlement));
