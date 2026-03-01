@@ -26,7 +26,7 @@ Context: [Frontend.md](Frontend.md) | [CurrentSmartContract.md](../CurrentSmartC
 
 | Method | Params | Returns | Use Case |
 |--------|--------|---------|----------|
-| `freeBalance` | `address user`, `address asset` | `uint256` | Total balance (free + reserved) |
+| `freeBalance` | `address user`, `address asset` | `uint256` | Unreserved balance (available for reserve/withdraw before reservation) |
 | `reservedBalance` | `address user`, `address asset` | `uint256` | Reserved for pending checkpoint |
 | `availableBalance` | `address user`, `address asset` | `uint256` | Withdrawable: freeBalance - reservedBalance |
 | `lockedBalance` | `user`, `asset`, `marketId`, `sessionId` | `uint256` | Locked in session |

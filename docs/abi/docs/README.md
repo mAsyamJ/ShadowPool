@@ -18,23 +18,23 @@ The `docs/abi/` directory contains:
 
 | Path | Description |
 |------|-------------|
-| [CurrentSmartContract.md](CurrentSmartContract.md) | Authoritative architecture, topology, contract inventory, data models, flows |
-| [frontend/](frontend/) | Frontend integration; [README](frontend/README.md) index, [SystemIntegration](frontend/SystemIntegration.md), [Frontend.md](frontend/Frontend.md), [AppFlow.md](frontend/AppFlow.md), [DeploymentConfig](frontend/DeploymentConfig.md) |
+| [CurrentSmartContract.md](CurrentSmartContract.md) | **V3** — Authoritative architecture, topology, contract inventory, data models, flows (OutcomeToken1155, MarketRiskManager, V3-Escrow) |
+| [frontend/](frontend/) | Frontend integration; [README](frontend/README.md) index, [SystemIntegration](frontend/SystemIntegration.md), [Frontend.md](frontend/Frontend.md), [AppFlow.md](frontend/AppFlow.md), [DeploymentConfig](frontend/DeploymentConfig.md), [EIP712Signing](frontend/EIP712Signing.md) |
 | [cre/](cre/) | **Chainlink CRE** — workflow architecture, report formats, evmClient.writeReport, trigger-callback model |
-| [relayer/](relayer/) | **Nitrolite Yellow** — Nitrolite/ERC-7824, LS-LMSR pricing, session state, relayer API, checkpoint format |
+| [relayer/](relayer/) | **Checkpoint relayer** — [RelayerArchitecture](relayer/RelayerArchitecture.md), [RelayerOverview](relayer/RelayerOverview.md), checkpoint format, EIP-712 signing |
 | [IntegrationMatrix.md](IntegrationMatrix.md) | Contract → report type → CRE path mapping |
 | [DevelopmentContext.md](DevelopmentContext.md) | Setup, build, test, deploy, relayer, wiring |
 | [DataStructures.md](DataStructures.md) | Checkpoint, Delta, Draft, Market structs; enums |
 
 ---
 
-## 3. Key Flows
+## 3. Key Flows (V3)
 
 | Flow | Path |
 |------|------|
-| **Curated draft → Publish** | [AppFlow.md](frontend/AppFlow.md) §2, [CurrentSmartContract.md](CurrentSmartContract.md) §6.2 |
-| **Nitrolite Yellow checkpoint** | [RelayerOverview.md](relayer/RelayerOverview.md), [CREWorkflowIntegration.md](cre/CREWorkflowIntegration.md) |
-| **Oracle resolution → Redeem** | [CurrentSmartContract.md](CurrentSmartContract.md) §6.1, [AppFlow.md](frontend/AppFlow.md) §3.8 |
+| **Curated draft → Publish** | [AppFlow.md](frontend/AppFlow.md) §2, [CurrentSmartContract.md](CurrentSmartContract.md) §6.2 — claimAndSeed, createFromDraft, risk cap |
+| **Checkpoint settlement** | [RelayerOverview.md](relayer/RelayerOverview.md), [RelayerArchitecture.md](relayer/RelayerArchitecture.md), [CREWorkflowCheckpoints.md](cre/CREWorkflowCheckpoints.md), [CREWorkflowIntegration.md](cre/CREWorkflowIntegration.md) — V3-Escrow reserve/release |
+| **Oracle resolution → Redeem** | [CurrentSmartContract.md](CurrentSmartContract.md) §6.1, §6.4 — OutcomeToken1155.burnForRedeem |
 
 ---
 
@@ -45,7 +45,14 @@ The `docs/abi/` directory contains:
 | `scripts/verify_and_export_abis_fuji.sh` | Verify all DeployBetaTestnet contracts on Snowtrace (Fuji) and export ABIs to `docs/abi/` |
 | `scripts/export_abis_to_docs.sh` | Export ABIs only (no verification); use `SKIP_VERIFY=1` for the former to achieve the same |
 
-## 5. References
+## 5. V3 Summary
 
-- [e2eAvalanceFujiTest.md](../../e2e/e2eAvalanceFujiTest.md) — E2E test flows, Nitrolite Yellow rationale
+- **OutcomeToken1155** — Canonical ERC-1155 positions; replaces ExecutionLedger for primary lane
+- **MarketRiskManager** — LP payout cap per market; `reserveLpPayout` before LP pays
+- **V3-Escrow** — 3-bucket vaults; reserve on submit, release on finalize; `cancelPendingCheckpoint` (6h delay)
+- **DeployBetaTestnet** — Active deployment (Fuji); DeployTestnet is legacy (ExecutionLedger path)
+
+## 6. References
+
+- [e2eAvalanceFujiTest.md](../../e2e/e2eAvalanceFujiTest.md) — E2E test flows, checkpoint settlement rationale
 - [deploymentAvalancheFuji.md](../../deployment/deploymentAvalancheFuji.md) — Fuji contract addresses

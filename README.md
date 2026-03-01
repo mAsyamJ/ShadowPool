@@ -4,7 +4,7 @@
 
 [![Solidity](https://img.shields.io/badge/Solidity-0.8.24-blue)](https://soliditylang.org/)
 [![Foundry](https://img.shields.io/badge/Foundry-tested-green)](https://getfoundry.sh/)
-[![Avalanche Fuji](https://img.shields.io/badge/Deployed-Fuji-orange)](https://testnet.snowscan.xyz)
+[![Avalanche Fuji](https://img.shields.io/badge/Deployed-Fuji-orange)](https://testnet.snowtrace.io)
 
 ---
 
@@ -14,10 +14,10 @@ RetroPick is a production-ready prediction market protocol that separates **on-c
 
 | Aspect | Description |
 |--------|-------------|
-| **Core flow** | Curated drafts → Claim & seed → Publish via CRE → Off-chain trading (Nitrolite Yellow) → Checkpoint settlement → Oracle resolution → Redeem |
-| **Trading model** | Off-chain state channels (Yellow sessions) with LS-LMSR pricing; on-chain checkpoint settlement with operator + user signatures |
+| **Core flow** | Curated drafts → claimAndSeed → Publish via CRE → Off-chain trading → Checkpoint settlement (V3: OutcomeToken1155 + V3-Escrow) → Oracle resolution → Redeem |
+| **Trading model** | Off-chain trading with your relayer; on-chain checkpoint settlement with operator + user signatures |
 | **Oracle** | Chainlink Forwarder → CREReceiver → OracleCoordinator → SettlementRouter → MarketRegistry / ChannelSettlement |
-| **Deployed** | Avalanche Fuji (43113); 17 verified contracts on Snowscan |
+| **Deployed** | Avalanche Fuji (43113); DeployBetaTestnet: 24 verified contracts on Snowscan |
 | **Framework** | Foundry; Solidity 0.8.24; OpenZeppelin |
 
 ---
@@ -28,10 +28,12 @@ RetroPick is a production-ready prediction market protocol that separates **on-c
 |----------------|-------------|
 | **Chainlink CRE-native** | All oracle and settlement flows enter via Chainlink Forwarder; single trusted entry point |
 | **Modular architecture** | Custody, settlement, fees, and curation are separate contracts; upgradeable wiring |
-| **Off-chain trading, on-chain custody** | Nitrolite Yellow state channels for gasless trading; on-chain checkpoints for finality |
-| **Curated supply** | AI-proposed drafts → creator claim & seed → CRE publish; quality gate at market creation |
-| **ERC-4626 LP vaults** | Per-market liquidity vaults; protocol/LP/creator fee split with treasury fallback |
-| **Production-deployed** | 17 verified contracts on Avalanche Fuji; full E2E test suite mirrors deployment |
+| **Off-chain trading, on-chain custody** | Your relayer for gasless trading; on-chain checkpoints for finality via ChannelSettlement |
+| **Curated supply** | AI-proposed drafts → creator `claimAndSeed` → CRE publish; quality gate at market creation |
+| **ERC-1155 outcome tokens (V3)** | Polymarket-like positions; transfer-locked until resolved; canonical redeem path |
+| **V3-Escrow vaults** | 3-bucket accounting; reserve on checkpoint submit, release on finalize/cancel (6h escape hatch) |
+| **ERC-4626 LP vaults** | Per-draft liquidity vaults; protocol/LP/creator fee split; MarketRiskManager caps LP payout |
+| **Production-deployed** | 24 verified contracts on Avalanche Fuji (DeployBetaTestnet); full E2E test suite mirrors deployment |
 
 ---
 
@@ -52,13 +54,14 @@ flowchart TB
         RV -.->|validate| OC
         OC --> SR
         SR -->|settleMarket 0x01| MR
-        SR -->|finalizeSession Nitrolite 0x03| CS
+        SR -->|finalizeSession 0x03| CS
     end
 
-    subgraph exec["EXECUTION PIPELINE"]
+    subgraph exec["EXECUTION PIPELINE (V3)"]
         MR[MarketRegistry]
         CS[ChannelSettlement]
-        EL[ExecutionLedger]
+        OT[OutcomeToken1155]
+        RM[MarketRiskManager]
         MAV[MultiAssetVault]
         CV[CollateralVault]
         FM[FeeManager]
@@ -66,13 +69,15 @@ flowchart TB
         TP[TreasuryPool]
         LV[LiquidityVault4626]
 
-        MR <--> CS <--> EL
+        MR <--> CS
+        CS -->|mint/burn| OT
+        CS -->|reserveLpPayout| RM
+        MR -->|balanceOf+burn| OT
         MAV --> MR
         CV --> MR
         MAV --> CS
         CV --> CS
         FM --> FP --> TP
-        FM --> EL
         LV --> MAV
         LV --> CV
     end
@@ -113,10 +118,11 @@ flowchart TB
         SR[SettlementRouter]
     end
 
-    subgraph exec["Execution Pipeline"]
+    subgraph exec["Execution Pipeline (V3)"]
         MR[MarketRegistry]
         CS[ChannelSettlement]
-        EL[ExecutionLedger]
+        OT[OutcomeToken1155]
+        RM[MarketRiskManager]
         MAV[MultiAssetVault / CollateralVault]
         FM[FeeManager → FeePool → TreasuryPool]
         LV[LiquidityVault4626]
@@ -135,10 +141,12 @@ flowchart TB
     OC --> SR
     SR -->|0x01| MR
     SR -->|0x03| CS
-    MR <--> CS <--> EL
+    MR <--> CS
+    CS --> OT
+    CS --> RM
+    MR --> OT
     MAV --> MR
     MAV --> CS
-    FM --> EL
     LV --> MAV
     CREP --> MF --> MR
     MDB --> DCM --> LVF
@@ -149,24 +157,27 @@ flowchart TB
 
 1. **Curated publish** — AI proposes drafts → Creator claims and seeds → CRE publish → Market created with bound LP vault  
 2. **Oracle resolution** — CRE sends outcome reports → CREReceiver → OracleCoordinator → SettlementRouter → MarketRegistry  
-3. **Nitrolite Yellow checkpoint** — Relayer builds signed checkpoints → CRE sends `0x03` session payload → ChannelSettlement  
+3. **Checkpoint settlement** — Your relayer builds signed checkpoints → CRE sends `0x03` session payload → ChannelSettlement  
 
 ---
 
 ## Contract Inventory
 
-**17 production contracts** deployed by `DeployTestnet.s.sol`:
+**DeployBetaTestnet** (V3, active): 24 contracts including OutcomeToken1155, MarketRiskManager, Faucet.  
+**DeployTestnet** (legacy): ExecutionLedger path; different addresses.
 
-### Execution Lane (Custody + Settlement)
+### Execution Lane (Custody + Settlement) — V3
 
 | Contract | Role |
 |----------|------|
-| **ExecutionLedger** | Per-(market, user, outcome) share positions |
-| **ChannelSettlement** | Nitrolite Yellow checkpoint verification, operator/user signatures, LP counterparty |
-| **MultiAssetVault** | Per-asset custody for cash deltas |
-| **CollateralVault** | Single-token fallback; MarketRegistry VAULT for redeem path |
+| **OutcomeToken1155** | ERC-1155 outcome positions (V3 canonical); transfer-locked until resolved; mint/burn by ChannelSettlement |
+| **MarketRiskManager** | LP payout cap per market; `reserveLpPayout` enforces cap before LP pays |
+| **ChannelSettlement** | Checkpoint verification (V3-Escrow: reserve on submit, release on finalize); operator + user signatures |
+| **MultiAssetVault** | Per-asset 3-bucket custody; `freeBalance`, `reservedBalance`, `availableBalance` |
+| **CollateralVault** | Single-token 3-bucket fallback; MarketRegistry VAULT for redeem path |
 | **SettlementRouter** | Routes outcome reports and session payloads |
-| **MarketRegistry** | Market metadata, resolution, redeem from ledger + vault |
+| **MarketRegistry** | Market metadata, resolution, redeem (V3: burn OutcomeToken1155, payout from vault) |
+| **ExecutionLedger** | *Deprecated* — legacy path when `outcomeToken == 0`; DeployTestnet only |
 
 ### Fees
 
@@ -191,7 +202,7 @@ flowchart TB
 |----------|------|
 | **MarketPolicy** | Policy checks (e.g. min creator seed) |
 | **MarketDraftBoard** | Draft lifecycle: Proposed → Claimed → Published |
-| **DraftClaimManager** | claimDraft / claimAndSeed; custody of locked seed shares |
+| **DraftClaimManager** | claimAndSeed (primary); custody of locked seed shares until unlock |
 | **LiquidityVaultFactory** | Per-draft ERC-4626 vault deployment |
 | **MarketFactory** | createFromDraft; binds liquidity vault to market |
 | **CREPublishReceiver** | CRE entrypoint for publish-from-draft reports |
@@ -204,7 +215,7 @@ flowchart TB
 |-----------|-------|
 | **Chain** | Avalanche Fuji (C-Chain) |
 | **Chain ID** | 43113 |
-| **Explorer** | [testnet.snowscan.xyz](https://testnet.snowscan.xyz) |
+| **Explorer** | [testnet.snowtrace.io](https://testnet.snowtrace.io) |
 | **Deployer** | `0x38A8AB6EE17EB531d86eb877e56005587bC078e7` |
 | **Compiler** | v0.8.24+commit.e11b9ed9 |
 | **RPC** | `https://avalanche-fuji.infura.io/v3/...` |
@@ -395,21 +406,24 @@ MarketRegistry + setLiquidityVault → markPublished
 - **claimAndSeed** locks seed shares in DraftClaimManager until `tradingClose`
 - **Publish** requires creator signature; CRE workflow sends report via Forwarder
 
-### 2. Nitrolite Yellow Checkpoint
+### 2. Checkpoint Settlement (V3)
 
 ```
-Off-chain trading (relayer) → Build checkpoint + deltas → Operator + user signatures →
+Off-chain trading (your relayer) → Build checkpoint + deltas → Operator + user signatures →
 CRE workflow fetches payload → CREReceiver.onReport(0x03 || payload) →
 OracleCoordinator.submitSession → SettlementRouter.finalizeSession →
-ChannelSettlement.submitCheckpointFromPayload → 30min challenge window →
-finalizeCheckpoint → ExecutionLedger + MultiAssetVault + FeeManager
+ChannelSettlement.submitCheckpointFromPayload →
+  V3-Escrow: reserve(user, netDebit) per debtor; store reserveUsers, reserveAmts →
+30min challenge window → finalizeCheckpoint →
+  OutcomeToken1155 mint/burn sharesDelta → MarketRiskManager.reserveLpPayout (if LP pays) →
+  applyCashDeltasAndFees → release reserves → MultiAssetVault/CollateralVault + FeeManager
 ```
 
 - Relayer config: `CHANNEL_SETTLEMENT_ADDRESS`, `OPERATOR_PRIVATE_KEY`
 - Checkpoint: `(marketId, sessionId, nonce, stateHash, deltasHash)` + `Delta[]`
-- Delta: `(user, outcomeIndex, sharesDelta, cashDelta)`
+- Delta: `(user, outcomeIndex, sharesDelta, cashDelta)` — sharesDelta drives OutcomeToken1155 mint/burn
 
-### 3. Oracle Resolution → Redeem
+### 3. Oracle Resolution → Redeem (V3)
 
 ```
 CRE outcome report → CREReceiver.onReport → OracleCoordinator.submitResult →
@@ -418,7 +432,8 @@ MarketRegistry.onReport(0x01 || ...) → _doResolve(marketId, outcomeIndex, conf
 ```
 
 - User calls `MarketRegistry.redeem(marketId)` when resolved
-- Payout from MultiAssetVault or CollateralVault; one-shot per (marketId, user)
+- **V3:** Reads `OutcomeToken1155.balanceOf(user, tokenId)`; burns winning shares via `burnForRedeem`; payout from MultiAssetVault or CollateralVault
+- One-shot per (marketId, user)
 
 ---
 
@@ -441,15 +456,21 @@ MarketRegistry.onReport(0x01 || ...) → _doResolve(marketId, outcomeIndex, conf
 - Nonce strictly increasing; replay protection
 - `lastTradeAt <= tradingClose` at finalize
 - Total fee bps capped (2%)
-- Seed shares custody-locked until `tradingClose`
+- Seed shares custody-locked in DraftClaimManager until `unlockSeedShares`
+- **V3:** Accounting invariant `rawSum == netTraderDelta + feesTotal`
+- **V3:** LP solvency check before LP pays; `LpVaultInsolvent` revert
+- **V3-Escrow:** `withdraw <= availableBalance`; reserve/release only by ChannelSettlement
 
 ### Test Coverage
 
 - `SecurityHardening.t.sol` — unsigned delta, unauthorized resolve, post-close trade
-- `CheckpointFlow.t.sol` — hash mismatch, bad sigs, nonce, challenge window
+- `CheckpointFlow.t.sol` — hash mismatch, bad sigs, nonce, challenge window (V3: OutcomeToken)
 - `CurationFlow.t.sol` — seeded publish, draft-time mismatch, share lock custody
 - `InvariantSolvency.t.sol` — LP vault requirement, settlement solvency
-- `E2EDeployTestnet.t.sol` — full production path end-to-end
+- `OutcomeTokenFlow.t.sol` — V3: mint/burn, transfer lock, redeem burn
+- `RiskManagerFlow.t.sol` — V3: reserve within/exceed cap
+- `EscrowFlow.t.sol` — V3-Escrow: reserve, release, withdraw blocked, cancel
+- `E2EDeployTestnet.t.sol` — V3 full production path end-to-end
 
 ---
 
@@ -457,10 +478,13 @@ MarketRegistry.onReport(0x01 || ...) → _doResolve(marketId, outcomeIndex, conf
 
 | Document | Description |
 |----------|-------------|
-| [`.docs/deployment/deploymentAvalancheFuji.md`](.docs/deployment/deploymentAvalancheFuji.md) | Fuji deployment, addresses, parameters |
-| [`.docs/e2e/CurrentSmartContract.md`](.docs/e2e/CurrentSmartContract.md) | Full architecture, flows, trust model, data structures |
-| [`.docs/e2e/e2eAvalanceFujiTest.md`](.docs/e2e/e2eAvalanceFujiTest.md) | E2E tests, Nitrolite Yellow, wiring |
-| [`.docs/e2e/Frontend.md`](.docs/e2e/Frontend.md) | Frontend integration, contract-to-feature mapping, EIP-712 |
+| [docs/deployment/deploymentAvalancheFuji.md](docs/deployment/deploymentAvalancheFuji.md) | Fuji deployment, addresses, parameters |
+| [docs/abi/docs/CurrentSmartContract.md](docs/abi/docs/CurrentSmartContract.md) | Authoritative V3 architecture, flows, trust model, data structures |
+| [docs/e2e/e2eAvalanceFujiTest.md](docs/e2e/e2eAvalanceFujiTest.md) | E2E tests, checkpoint flow, wiring |
+| [docs/abi/docs/](docs/abi/docs/README.md) | ABI index, CRE, relayer, frontend integration |
+| [docs/abi/docs/frontend/](docs/abi/docs/frontend/) | Frontend — [README](docs/abi/docs/frontend/README.md), [Frontend.md](docs/abi/docs/frontend/Frontend.md), [DeploymentConfig](docs/abi/docs/frontend/DeploymentConfig.md) |
+| [docs/abi/docs/cre/](docs/abi/docs/cre/) | Chainlink CRE — workflows, report formats, pipeline |
+| [docs/abi/docs/relayer/](docs/abi/docs/relayer/) | Relayer — checkpoint format, EIP-712, API |
 
 ---
 
@@ -468,27 +492,28 @@ MarketRegistry.onReport(0x01 || ...) → _doResolve(marketId, outcomeIndex, conf
 
 | Component | Status |
 |-----------|--------|
-| Execution lane (MarketRegistry, ChannelSettlement, ExecutionLedger, vaults) | ✅ Production |
+| Execution lane (V3: OutcomeToken1155, MarketRiskManager, ChannelSettlement, vaults) | ✅ Production |
 | Oracle + routing (CREReceiver, OracleCoordinator, SettlementRouter) | ✅ Production |
-| Curated pipeline (DraftBoard, DraftClaimManager, CREPublishReceiver, MarketFactory) | ✅ Production |
+| Curated pipeline (DraftBoard, DraftClaimManager.claimAndSeed, CREPublishReceiver, MarketFactory) | ✅ Production |
 | Fee split (protocol/LP/creator) | ✅ Production |
-| Nitrolite Yellow checkpoint settlement | ✅ Production |
-| Avalanche Fuji deployment | ✅ Verified |
-| E2E test suite | ✅ 46+ tests passing |
+| Checkpoint settlement (V3-Escrow: reserve/release) | ✅ Production |
+| Avalanche Fuji deployment (DeployBetaTestnet) | ✅ Verified |
+| E2E test suite | ✅ Passing |
+| ExecutionLedger | ⚠️ Deprecated (legacy DeployTestnet only) |
 | Formal audit | ⏳ Pending |
 
 ---
 
-## Relayer Integration (Nitrolite Yellow)
+## Relayer Integration
 
-Set in `apps/relayer/.env`:
+Set in your relayer config:
 
 | Variable | Purpose |
 |----------|---------|
-| `CHANNEL_SETTLEMENT_ADDRESS` | ChannelSettlement contract (Nitrolite Yellow on-chain target) |
+| `CHANNEL_SETTLEMENT_ADDRESS` | ChannelSettlement contract (on-chain checkpoint target) |
 | `OPERATOR_PRIVATE_KEY` | Key for checkpoint signing (must match OPERATOR) |
 
-Relayer exposes `GET /cre/checkpoints/:sessionId` and `POST /cre/checkpoints/:sessionId`; CRE workflow fetches payloads and sends `0x03` reports to CREReceiver.
+Your relayer builds signed checkpoints; CRE workflow fetches payloads and sends `0x03` reports to CREReceiver. See `docs/abi/docs/relayer/` for checkpoint format and EIP-712 signing.
 
 ---
 

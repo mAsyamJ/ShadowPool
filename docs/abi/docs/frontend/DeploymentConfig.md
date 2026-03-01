@@ -12,7 +12,7 @@
 |-----------|-------|
 | **Chain** | Avalanche Fuji (C-Chain) |
 | **Chain ID** | 43113 |
-| **Explorer** | [testnet.snowscan.xyz](https://testnet.snowscan.xyz) |
+| **Explorer** | [testnet.snowtrace.io](https://testnet.snowtrace.io) |
 | **RPC** | `https://avalanche-fuji.infura.io/v3/YOUR_PROJECT_ID` or public RPC |
 
 ---
@@ -103,7 +103,7 @@ Frontend does **not** configure CRE. For understanding:
 # Network
 NEXT_PUBLIC_CHAIN_ID=43113
 NEXT_PUBLIC_RPC_URL=https://avalanche-fuji.infura.io/v3/YOUR_PROJECT_ID
-NEXT_PUBLIC_EXPLORER_URL=https://testnet.snowscan.xyz
+NEXT_PUBLIC_EXPLORER_URL=https://testnet.snowtrace.io
 
 # Core contracts (DeployBetaTestnet)
 NEXT_PUBLIC_MARKET_REGISTRY=0x3235094A8826a6205F0A0b74E2370A4AC39c6Cc2
